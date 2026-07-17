@@ -1,0 +1,45 @@
+{
+    "name": "dskripchenko/laravel-php-pdf",
+    "description": "Laravel bridge for dskripchenko/php-pdf — the MIT PDF toolkit. Pdf facade, config-driven fonts and page setup, and a response()->pdf() macro. GPL-free alternative to mpdf/FPDI stacks.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["laravel", "pdf", "html-to-pdf", "pdf-generation", "pdf-merge", "mpdf-alternative", "fpdi-alternative", "mit"],
+    "homepage": "https://github.com/dskripchenko/laravel-php-pdf",
+    "require": {
+        "php": "^8.2",
+        "dskripchenko/php-pdf": "^1.1.3",
+        "illuminate/http": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/support": "^11.0 || ^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0 || ^10.0 || ^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Dskripchenko\\LaravelPhpPdf\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Dskripchenko\\LaravelPhpPdf\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Dskripchenko\\LaravelPhpPdf\\PhpPdfServiceProvider"
+            ],
+            "aliases": {
+                "Pdf": "Dskripchenko\\LaravelPhpPdf\\Facades\\Pdf"
+            }
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
