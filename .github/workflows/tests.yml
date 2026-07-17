@@ -45,6 +45,14 @@ jobs:
           composer require "illuminate/support:^${{ matrix.laravel }}.0" "illuminate/http:^${{ matrix.laravel }}.0" --no-interaction --no-update
           composer require "orchestra/testbench:${{ matrix.testbench }}" --dev --no-interaction --no-update
 
+      # Laravel 11 is past its security-fix window, so current Composer
+      # refuses to resolve laravel/framework 11.x (unpatched advisories).
+      # This job verifies package COMPATIBILITY for existing L11 apps with
+      # committed locks — not an endorsement of new L11 installs.
+      - name: Allow EOL framework resolution (Laravel 11 only)
+        if: matrix.laravel == '11'
+        run: composer config policy.advisories.block false
+
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction --no-progress
 
