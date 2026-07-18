@@ -7,6 +7,7 @@ namespace Dskripchenko\LaravelPhpPdf;
 use Dskripchenko\PhpPdf\Document;
 use Dskripchenko\PhpPdf\Layout\Engine;
 use Illuminate\Http\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * A document paired with the configured engine, ready to be rendered as
@@ -61,6 +62,50 @@ class PendingPdf
                 addslashes($filename),
             ),
         ]);
+    }
+
+    /**
+     * Streamed HTTP response: the document is rendered straight into the
+     * output buffer via php-pdf's streaming emitter, never held in memory
+     * as one string. Prefer this over {@see response()} for very large
+     * documents (thousands of pages, many images). No Content-Length —
+     * the size is unknown until rendering finishes.
+     */
+    public function stream(string $filename = 'document.pdf', bool $inline = true): StreamedResponse
+    {
+        $document = $this->document;
+        $engine = $this->engine;
+
+        return new StreamedResponse(
+            static function () use ($document, $engine): void {
+                $out = fopen('php://output', 'wb');
+                if ($out === false) {
+                    throw new \RuntimeException('Cannot open php://output for PDF streaming.');
+                }
+                try {
+                    $document->toStream($out, $engine);
+                } finally {
+                    fclose($out);
+                }
+            },
+            200,
+            [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => sprintf(
+                    '%s; filename="%s"',
+                    $inline ? 'inline' : 'attachment',
+                    addslashes($filename),
+                ),
+            ],
+        );
+    }
+
+    /**
+     * Streamed attachment response (browser downloads the file).
+     */
+    public function streamDownload(string $filename = 'document.pdf'): StreamedResponse
+    {
+        return $this->stream($filename, inline: false);
     }
 
     /**

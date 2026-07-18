@@ -40,6 +40,11 @@ Pdf::fromHtml(view('invoices.show', $data)->render())->save(storage_path('invoic
 // HTTP responses
 Route::get('/invoice', fn () => Pdf::fromHtml($html)->inline('invoice.pdf'));
 Route::get('/invoice/download', fn () => Pdf::fromHtml($html)->download('invoice.pdf'));
+
+// Streamed responses — rendered straight into the output buffer, never
+// held in memory as one string. For very large documents.
+Route::get('/report', fn () => Pdf::fromHtml($html)->stream('report.pdf'));
+Route::get('/report/download', fn () => Pdf::fromHtml($html)->streamDownload('report.pdf'));
 ```
 
 ### `response()->pdf()`
