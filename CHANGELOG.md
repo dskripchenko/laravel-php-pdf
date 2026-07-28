@@ -4,6 +4,12 @@ All notable changes to `dskripchenko/laravel-php-pdf` are documented in
 this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] — 2026-07-28
+
+### Changed
+- CI: PHP **8.5** added to the test matrix — the bridge is verified
+  across PHP 8.2–8.5 × Laravel 11/12/13.
+
 ## [1.1.0] — 2026-07-18
 
 ### Added
