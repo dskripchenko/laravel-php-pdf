@@ -5,6 +5,8 @@
 > No GPL friction, [faster than mpdf/dompdf](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/BENCHMARKS.md),
 > and [conformance-validated on every push](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/CONFORMANCE.md).
 
+> 🌐 **English** · [Deutsch](docs/de/README.md) · [Русский](docs/ru/README.md) · [中文](docs/zh/README.md)
+
 [![Tests](https://img.shields.io/github/actions/workflow/status/dskripchenko/laravel-php-pdf/tests.yml?branch=main&label=tests&logo=github)](https://github.com/dskripchenko/laravel-php-pdf/actions/workflows/tests.yml)
 [![Latest Version](https://img.shields.io/packagist/v/dskripchenko/laravel-php-pdf?logo=packagist&logoColor=white)](https://packagist.org/packages/dskripchenko/laravel-php-pdf)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
