@@ -7,6 +7,7 @@ namespace Dskripchenko\LaravelPhpPdf;
 use Dskripchenko\PhpPdf\Build\DocumentBuilder;
 use Dskripchenko\PhpPdf\Document;
 use Dskripchenko\PhpPdf\Layout\Engine;
+use Dskripchenko\PhpPdf\Pdf\Forms\ExistingFormFiller;
 use Dskripchenko\PhpPdf\Pdf\PdfFont;
 use Dskripchenko\PhpPdf\Font\Ttf\TtfFile;
 use Dskripchenko\PhpPdf\Section;
@@ -55,6 +56,28 @@ class PdfFactory
     public function builder(): DocumentBuilder
     {
         return DocumentBuilder::new();
+    }
+
+    /**
+     * Open an existing PDF form — a file path or the PDF bytes — to fill,
+     * flatten and stamp it. The configured default font is used for values
+     * the form's own fonts cannot show (Cyrillic, CJK, …).
+     */
+    public function fillForm(string $pdf, string $password = ''): ExistingFormFiller
+    {
+        $filler = str_starts_with(ltrim(substr($pdf, 0, 1024)), '%PDF-')
+            ? ExistingFormFiller::fromBytes($pdf, $password)
+            : ExistingFormFiller::fromFile($pdf, $password);
+
+        $font = $this->config['fonts']['default'] ?? null;
+        if (is_string($font) && $font !== '') {
+            if (! is_readable($font)) {
+                throw new \InvalidArgumentException("php-pdf font not readable: $font");
+            }
+            $filler->useFont($font);
+        }
+
+        return $filler;
     }
 
     /**

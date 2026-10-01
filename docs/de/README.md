@@ -52,8 +52,8 @@ Route::get('/report/download', fn () => Pdf::fromHtml($html)->streamDownload('re
 
 ### `response()->pdf()`
 
-Das Makro nimmt ein `PendingPdf`, ein php-pdf-`Document` (beide Ebenen) oder
-rohe Bytes entgegen — die mpdf-Gewohnheit `Output('', 'D')`, nur auf
+Das Makro nimmt ein `PendingPdf`, ein php-pdf-`Document` (beide Ebenen), ein
+ausgefülltes Formular (`Pdf::fillForm()`) oder rohe Bytes entgegen — die mpdf-Gewohnheit `Output('', 'D')`, nur auf
 Laravel-Art:
 
 ```php
@@ -76,6 +76,30 @@ Alles aus dem zugrunde liegenden Werkzeugkasten ist erreichbar: Diagramme,
 Barcodes, AcroForm-Felder, PDF/A, Verschlüsselung, PKCS#7-Signaturen sowie das
 Lesen und Zusammenführen bestehender PDFs. Siehe die
 [php-pdf-Dokumentation](https://github.com/dskripchenko/php-pdf#documentation).
+
+### Bestehende Formulare ausfüllen
+
+`Pdf::fillForm()` öffnet ein anderswo erzeugtes PDF-Formular — Dateipfad
+oder PDF-Bytes — und liefert php-pdfs `ExistingFormFiller`. Für Werte, die
+die formulareigenen Schriften nicht darstellen können, wird das
+konfigurierte `fonts.default` verwendet, sodass kyrillische oder CJK-Werte
+ohne zusätzlichen Code funktionieren:
+
+```php
+$form = Pdf::fillForm(storage_path('templates/antrag.pdf'))
+    ->setValues([
+        'full_name' => 'Erika Mustermann',
+        'agree' => true,
+    ])
+    ->stampImage(0, storage_path('signature.png'), x: 400, y: 700, width: 120, height: 40)
+    ->flatten();
+
+return response()->pdf($form, 'antrag.pdf', inline: false);
+```
+
+`fields()` listet die Felder der Vorlage mit Typen und zulässigen Optionen;
+Wertregeln und das Verhalten von `flatten()` stehen unter
+[bestehendes Formular ausfüllen](https://github.com/dskripchenko/php-pdf/blob/main/docs/de/USAGE.md#ein-bestehendes-formular-ausfüllen-acroform).
 
 ## Konfiguration
 

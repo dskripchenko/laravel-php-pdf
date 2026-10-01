@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static PendingPdf fromHtml(string $html, array<string, string> $metadata = [])
  * @method static DocumentBuilder builder()
  * @method static PendingPdf render(Document $document)
+ * @method static \Dskripchenko\PhpPdf\Pdf\Forms\ExistingFormFiller fillForm(string $pdf, string $password = '')
  * @method static \Dskripchenko\PhpPdf\Layout\Engine|null engine()
  *
  * @see PdfFactory

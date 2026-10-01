@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dskripchenko\LaravelPhpPdf;
 
 use Dskripchenko\PhpPdf\Document;
+use Dskripchenko\PhpPdf\Pdf\Forms\ExistingFormFiller;
 use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Response as ResponseFacade;
@@ -37,7 +38,7 @@ class PhpPdfServiceProvider extends ServiceProvider
      * response()->pdf($document, 'invoice.pdf')
      *
      * Accepts a PendingPdf, a php-pdf Document (AST or low-level
-     * Pdf\Document), or raw PDF bytes.
+     * Pdf\Document), a filled form (ExistingFormFiller), or raw PDF bytes.
      */
     private function registerResponseMacro(): void
     {
@@ -56,9 +57,10 @@ class PhpPdfServiceProvider extends ServiceProvider
                 $pdf instanceof PendingPdf => $pdf->bytes(),
                 $pdf instanceof Document => $app->make(PdfFactory::class)->render($pdf)->bytes(),
                 $pdf instanceof \Dskripchenko\PhpPdf\Pdf\Document => $pdf->toBytes(),
+                $pdf instanceof ExistingFormFiller => $pdf->toBytes(),
                 is_string($pdf) => $pdf,
                 default => throw new \InvalidArgumentException(
-                    'response()->pdf() expects PendingPdf, Document, Pdf\Document, or PDF bytes.',
+                    'response()->pdf() expects PendingPdf, Document, Pdf\Document, ExistingFormFiller, or PDF bytes.',
                 ),
             };
 

@@ -50,7 +50,7 @@ Route::get('/report/download', fn () => Pdf::fromHtml($html)->streamDownload('re
 
 ### `response()->pdf()`
 
-这个宏接受 `PendingPdf`、php-pdf 的 `Document`（任一层）或原始字节——
+这个宏接受 `PendingPdf`、php-pdf 的 `Document`（任一层）、已填写的表单（`Pdf::fillForm()`）或原始字节——
 相当于 mpdf 里 `Output('', 'D')` 的习惯写法，只是更符合 Laravel 的风格：
 
 ```php
@@ -72,6 +72,24 @@ return Pdf::render($document)->download('report.pdf');
 底层工具箱的能力都可以直接使用：图表、条码、AcroForm 表单域、PDF/A、加密、
 PKCS#7 签名，以及读取与合并已有 PDF。详见
 [php-pdf 文档](https://github.com/dskripchenko/php-pdf#documentation)。
+
+### 填写已有表单
+
+`Pdf::fillForm()` 打开在别处生成的 PDF 表单（文件路径或 PDF 字节），并返回 php-pdf 的 `ExistingFormFiller`。对于表单自带字体无法显示的值，会使用配置中的 `fonts.default`，因此西里尔文或中日韩文字无需额外代码即可正常显示：
+
+```php
+$form = Pdf::fillForm(storage_path('templates/application.pdf'))
+    ->setValues([
+        'full_name' => '张伟',
+        'agree' => true,
+    ])
+    ->stampImage(0, storage_path('signature.png'), x: 400, y: 700, width: 120, height: 40)
+    ->flatten();
+
+return response()->pdf($form, 'application.pdf', inline: false);
+```
+
+`fields()` 列出模板中的字段及其类型和可接受的选项；值的规则以及 `flatten()` 的行为见[填写已有表单](https://github.com/dskripchenko/php-pdf/blob/main/docs/zh/USAGE.md#填写已有表单acroform)。
 
 ## 配置
 

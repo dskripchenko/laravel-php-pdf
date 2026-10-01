@@ -4,6 +4,18 @@ All notable changes to `dskripchenko/laravel-php-pdf` are documented in
 this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-10-01
+
+### Added
+- `Pdf::fillForm($pathOrBytes, $password = '')` — opens an existing PDF form
+  as php-pdf's `ExistingFormFiller` (fill, flatten, stamp), with the
+  configured `fonts.default` used for values the form's own fonts cannot
+  show.
+- `response()->pdf()` accepts a filled form.
+
+### Changed
+- Requires `dskripchenko/php-pdf` ^1.10.
+
 ## [1.1.1] — 2026-07-28
 
 ### Changed

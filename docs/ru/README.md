@@ -52,8 +52,8 @@ Route::get('/report/download', fn () => Pdf::fromHtml($html)->streamDownload('re
 
 ### `response()->pdf()`
 
-Макрос принимает `PendingPdf`, `Document` из php-pdf (любого слоя) или просто
-байты — привычка mpdf `Output('', 'D')`, но по-ларавеловски:
+Макрос принимает `PendingPdf`, `Document` из php-pdf (любого слоя),
+заполненную форму (`Pdf::fillForm()`) или просто байты — привычка mpdf `Output('', 'D')`, но по-ларавеловски:
 
 ```php
 return response()->pdf(Pdf::fromHtml($html), 'invoice.pdf');                // в браузере
@@ -74,6 +74,29 @@ return Pdf::render($document)->download('report.pdf');
 Доступно всё, что умеет базовый набор инструментов: графики, штрихкоды, поля
 AcroForm, PDF/A, шифрование, подпись PKCS#7, чтение и слияние готовых PDF.
 Смотрите [документацию php-pdf](https://github.com/dskripchenko/php-pdf#documentation).
+
+### Заполнение готовых форм
+
+`Pdf::fillForm()` открывает PDF-форму, сделанную где-то ещё (путь к файлу
+или байты PDF), и возвращает `ExistingFormFiller` из php-pdf. Для значений,
+которые собственные шрифты формы показать не могут, берётся настроенный
+`fonts.default` — кириллица и CJK работают без дополнительного кода:
+
+```php
+$form = Pdf::fillForm(storage_path('templates/application.pdf'))
+    ->setValues([
+        'full_name' => 'Иван Петров',
+        'agree' => true,
+    ])
+    ->stampImage(0, storage_path('signature.png'), x: 400, y: 700, width: 120, height: 40)
+    ->flatten();
+
+return response()->pdf($form, 'application.pdf', inline: false);
+```
+
+`fields()` перечисляет поля шаблона с типами и допустимыми вариантами;
+правила значений и поведение `flatten()` — в разделе
+[заполнение существующей формы](https://github.com/dskripchenko/php-pdf/blob/main/docs/ru/USAGE.md#заполнение-существующей-формы-acroform).
 
 ## Настройка
 

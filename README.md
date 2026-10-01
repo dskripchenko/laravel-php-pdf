@@ -51,8 +51,8 @@ Route::get('/report/download', fn () => Pdf::fromHtml($html)->streamDownload('re
 
 ### `response()->pdf()`
 
-The macro accepts a `PendingPdf`, a php-pdf `Document` (either layer), or
-raw bytes — the mpdf `Output('', 'D')` habit, the Laravel way:
+The macro accepts a `PendingPdf`, a php-pdf `Document` (either layer), a
+filled form (`Pdf::fillForm()`), or raw bytes — the mpdf `Output('', 'D')` habit, the Laravel way:
 
 ```php
 return response()->pdf(Pdf::fromHtml($html), 'invoice.pdf');               // inline
@@ -73,6 +73,29 @@ return Pdf::render($document)->download('report.pdf');
 Everything from the underlying toolkit is reachable — charts, barcodes,
 AcroForm fields, PDF/A, encryption, PKCS#7 signing, and reading/merging
 existing PDFs. See the [php-pdf documentation](https://github.com/dskripchenko/php-pdf#documentation).
+
+### Filling existing forms
+
+`Pdf::fillForm()` opens a PDF form produced elsewhere — a file path or the
+PDF bytes — and returns php-pdf's `ExistingFormFiller`. The configured
+`fonts.default` is used for values the form's own fonts cannot show, so
+Cyrillic or CJK values work without extra code:
+
+```php
+$form = Pdf::fillForm(storage_path('templates/application.pdf'))
+    ->setValues([
+        'full_name' => 'Иван Петров',
+        'agree' => true,
+    ])
+    ->stampImage(0, storage_path('signature.png'), x: 400, y: 700, width: 120, height: 40)
+    ->flatten();
+
+return response()->pdf($form, 'application.pdf', inline: false);
+```
+
+`fields()` lists the template's fields with their types and accepted
+options; see [filling an existing form](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/USAGE.md#fill-an-existing-form-acroform)
+for the value rules and what `flatten()` does.
 
 ## Configuration
 
