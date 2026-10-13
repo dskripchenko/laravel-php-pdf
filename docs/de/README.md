@@ -73,7 +73,7 @@ return Pdf::render($document)->download('report.pdf');
 ```
 
 Alles aus dem zugrunde liegenden Werkzeugkasten ist erreichbar: Diagramme,
-Barcodes, AcroForm-Felder, PDF/A, Verschlüsselung, PKCS#7-Signaturen sowie das
+Barcodes, AcroForm-Felder, PDF/A, Verschlüsselung, digitale Signaturen sowie das
 Lesen und Zusammenführen bestehender PDFs. Siehe die
 [php-pdf-Dokumentation](https://github.com/dskripchenko/php-pdf#documentation).
 
@@ -101,6 +101,44 @@ return response()->pdf($form, 'antrag.pdf', inline: false);
 Wertregeln und das Verhalten von `flatten()` stehen unter
 [bestehendes Formular ausfüllen](https://github.com/dskripchenko/php-pdf/blob/main/docs/de/USAGE.md#ein-bestehendes-formular-ausfüllen-acroform).
 
+### Digitale Signaturen
+
+Den Schlüssel einmal konfigurieren (`php-pdf.signing`, unten), dann:
+
+```php
+// Ein erzeugtes Dokument signieren. Ein darin enthaltenes SignatureField wird
+// signiert, sein Stempel wird aus dem Zertifikat befüllt; sonst ist die Signatur unsichtbar.
+return Pdf::fromHtml($html)->signed(['reason' => 'Approved'])->download('contract.pdf');
+
+// Ein bestehendes PDF signieren — auch ein bereits signiertes; frühere Signaturen bleiben gültig.
+$signed = Pdf::sign(storage_path('contract.pdf'), ['reason' => 'Countersigned']);
+
+// Für das Ausfüllen von Formularen zertifizieren, Felder sperren, ein benanntes Feld signieren…
+$signed = Pdf::sign($pdf, ['certification' => 2, 'lock' => ['amount'], 'field' => 'approver']);
+
+// …oder PdfSigner von php-pdf direkt nutzen: sichtbare Felder, Felder für spätere
+// Unterzeichner, ein Schlüssel außerhalb des Servers (CryptoPro-Plug-in, HSM).
+// (ExternalSigner ist Dskripchenko\PhpPdf\Pdf\Signature\External\ExternalSigner.)
+$prepared = Pdf::signer($pdf)->prepare(Pdf::signatureConfig(['signer' => new ExternalSigner($userCert)]));
+
+// Ein signiertes Formular ausfüllen, ohne die Signatur zu brechen.
+$filled = Pdf::fillForm($signed)->setValue('amount', '100')->toBytes(incremental: true);
+
+// Langzeitvalidierung: DSS (B-LT) plus Dokument-Zeitstempel (B-LTA).
+$archived = Pdf::ltv($signed);
+
+// Signaturen gegen die konfigurierten Vertrauensanker prüfen.
+$report = Pdf::validate($archived);
+$report->allValid();
+```
+
+Signaturen sind standardmäßig PAdES (`ETSI.CAdES.detached`); RSA-, ECDSA- und
+GOST-R-34.10-2012-Schlüssel funktionieren (GOST erfordert, dass die gost-Engine
+von OpenSSL in PHP geladen ist). Zeitstempeldienste, OCSP-Responder und CRLs werden
+über den HTTP-Client von Laravel angesprochen, daher greifen Proxys und `Http::fake()`
+funktioniert in Tests.
+Der vollständige Funktionsumfang steht im [Signatur-Leitfaden](https://github.com/dskripchenko/php-pdf/blob/main/docs/de/SIGNING.md).
+
 ## Konfiguration
 
 `config/php-pdf.php` steuert Seitenvorgaben und Schriften:
@@ -123,6 +161,26 @@ Wertregeln und das Verhalten von `flatten()` stehen unter
 ],
 
 'metadata' => ['Author' => 'ACME Corp.'],  // Standardeinträge in /Info
+
+'signing' => [
+    // PEM-Zertifikat + Schlüssel (Dateipfade oder PEM-Text)…
+    'certificate' => env('PHP_PDF_SIGN_CERT'),
+    'key' => env('PHP_PDF_SIGN_KEY'),
+    'passphrase' => env('PHP_PDF_SIGN_PASSPHRASE'),
+    // …oder ein PKCS#12-Container.
+    'pkcs12' => env('PHP_PDF_SIGN_P12'),
+    'pkcs12_password' => env('PHP_PDF_SIGN_P12_PASSWORD'),
+    'chain' => [],              // Zwischenzertifikate
+    'format' => 'pades',        // oder 'pkcs7' (adbe.pkcs7.detached)
+    'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
+    'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
+],
+
+'validation' => [
+    'trust' => [],              // Wurzelzertifikate für Pdf::validate()
+    'system_trust' => false,    // OpenSSL-Systemwurzeln hinzufügen
+    'fetch_revocation' => false,
+],
 ```
 
 ## Umstieg von laravel-mpdf und den barryvdh-Wrappern

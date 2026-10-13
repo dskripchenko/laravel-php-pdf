@@ -70,4 +70,58 @@ return [
         // 'Author' => 'ACME Corp.',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Digital signatures
+    |--------------------------------------------------------------------------
+    |
+    | The key Pdf::sign(), ->signed() and Pdf::signatureConfig() use: a PEM
+    | certificate and key (file paths or PEM text), or a PKCS#12 container.
+    | `chain` lists intermediate certificates. `format` is `pades`
+    | (ETSI.CAdES.detached, the default) or `pkcs7` (adbe.pkcs7.detached).
+    | With a timestamp authority URL, signatures carry an RFC 3161 timestamp
+    | (PAdES B-T). GOST keys need OpenSSL's gost engine loaded into PHP.
+    |
+    */
+
+    'signing' => [
+        'certificate' => env('PHP_PDF_SIGN_CERT'),
+        'key' => env('PHP_PDF_SIGN_KEY'),
+        'passphrase' => env('PHP_PDF_SIGN_PASSPHRASE'),
+        'pkcs12' => env('PHP_PDF_SIGN_P12'),
+        'pkcs12_password' => env('PHP_PDF_SIGN_P12_PASSWORD'),
+        'chain' => [],
+        'format' => env('PHP_PDF_SIGN_FORMAT', 'pades'),
+        'signer_name' => null,
+        'reason' => null,
+        'location' => null,
+        'contact' => null,
+        'timestamp' => [
+            'url' => env('PHP_PDF_TSA_URL'),
+            'username' => env('PHP_PDF_TSA_USERNAME'),
+            'password' => env('PHP_PDF_TSA_PASSWORD'),
+            'policy' => null,
+            'headers' => [],
+            'timeout' => 15,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Signature validation
+    |--------------------------------------------------------------------------
+    |
+    | Trust anchors for Pdf::validate() — root certificates (file paths or
+    | PEM text) — and whether to add OpenSSL's system roots. With
+    | `fetch_revocation`, revocation data missing from a document is fetched
+    | from OCSP responders and CRLs (Pdf::ltv() always fetches).
+    |
+    */
+
+    'validation' => [
+        'trust' => [],
+        'system_trust' => false,
+        'fetch_revocation' => false,
+    ],
+
 ];
