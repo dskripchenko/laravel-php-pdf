@@ -16,6 +16,14 @@ use Illuminate\Support\Facades\Facade;
  * @method static PendingPdf render(Document $document)
  * @method static \Dskripchenko\PhpPdf\Pdf\Forms\ExistingFormFiller fillForm(string $pdf, string $password = '')
  * @method static \Dskripchenko\PhpPdf\Layout\Engine|null engine()
+ * @method static \Dskripchenko\PhpPdf\Pdf\SignatureConfig signatureConfig(array<string, mixed> $options = [])
+ * @method static \Dskripchenko\PhpPdf\Pdf\Signature\Tsa\TsaClient|null timestampAuthority()
+ * @method static \Dskripchenko\PhpPdf\Pdf\Signature\PdfSigner signer(string $pdf, string $password = '')
+ * @method static string sign(string $pdf, array<string, mixed>|\Dskripchenko\PhpPdf\Pdf\SignatureConfig $options = [], string $password = '')
+ * @method static string ltv(string $pdf, bool $archive = true, string $password = '')
+ * @method static \Dskripchenko\PhpPdf\Pdf\Signature\Validation\ValidationReport validate(string $pdf, string $password = '')
+ * @method static \Dskripchenko\PhpPdf\Pdf\Signature\Validation\TrustStore trustStore()
+ * @method static \Dskripchenko\LaravelPhpPdf\Signing\LaravelHttpTransport httpTransport()
  *
  * @see PdfFactory
  */

@@ -4,6 +4,35 @@ All notable changes to `dskripchenko/laravel-php-pdf` are documented in
 this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Digital signatures** — a `signing` config block (PEM certificate and key
+  or PKCS#12, intermediate chain, PAdES or PKCS#7 format, default reason /
+  location / contact, RFC 3161 timestamp authority) and:
+  - `Pdf::fromHtml(...)->signed($options)` / `Pdf::render(...)->signed()` —
+    sign a generated document; its SignatureField is signed with the stamp
+    filled from the certificate, otherwise an invisible signature is added;
+  - `Pdf::sign($pathOrBytes, $options)` — sign an existing or already signed
+    PDF (incremental: earlier signatures stay valid); options for the field,
+    certification (DocMDP), field locks, an external `Signer`, the stamp;
+  - `Pdf::signer($pdf)` — php-pdf's `PdfSigner` for visible fields, fields
+    for later signers, signing outside the server;
+  - `Pdf::signatureConfig($options)`, `Pdf::timestampAuthority()`;
+  - `Pdf::ltv($pdf)` — long-term validation (DSS, then a document
+    timestamp when a TSA is configured);
+  - `Pdf::validate($pdf)` with a `validation` config block (trust anchors,
+    system roots, revocation fetching).
+- `Signing\LaravelHttpTransport` — timestamp authorities, OCSP responders
+  and CRLs go through Laravel's HTTP client (proxies, `Http::fake()`).
+
+### Changed
+- Requires `dskripchenko/php-pdf` ^1.15. Besides the signing features this
+  brings fixes that matter in long-running workers (Octane): a `PdfFont`
+  kept by the factory no longer holds every finished document in memory,
+  and a cached `PdfImage` no longer points at the wrong object in the next
+  document; encrypted documents with embedded fonts are no longer corrupt.
+
 ## [1.2.0] — 2026-10-01
 
 ### Added

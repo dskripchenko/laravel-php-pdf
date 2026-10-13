@@ -72,7 +72,7 @@ return Pdf::render($document)->download('report.pdf');
 ```
 
 Доступно всё, что умеет базовый набор инструментов: графики, штрихкоды, поля
-AcroForm, PDF/A, шифрование, подпись PKCS#7, чтение и слияние готовых PDF.
+AcroForm, PDF/A, шифрование, цифровая подпись, чтение и слияние готовых PDF.
 Смотрите [документацию php-pdf](https://github.com/dskripchenko/php-pdf#documentation).
 
 ### Заполнение готовых форм
@@ -98,6 +98,43 @@ return response()->pdf($form, 'application.pdf', inline: false);
 правила значений и поведение `flatten()` — в разделе
 [заполнение существующей формы](https://github.com/dskripchenko/php-pdf/blob/main/docs/ru/USAGE.md#заполнение-существующей-формы-acroform).
 
+### Цифровая подпись
+
+Один раз настройте ключ (`php-pdf.signing`, ниже), затем:
+
+```php
+// Подписать сгенерированный документ. Поле SignatureField в нём подписывается,
+// а его штамп заполняется из сертификата; иначе подпись невидимая.
+return Pdf::fromHtml($html)->signed(['reason' => 'Approved'])->download('contract.pdf');
+
+// Подписать готовый PDF — в том числе уже подписанный; прежние подписи остаются действительными.
+$signed = Pdf::sign(storage_path('contract.pdf'), ['reason' => 'Countersigned']);
+
+// Сертифицировать для заполнения форм, заблокировать поля, подписать именованное поле…
+$signed = Pdf::sign($pdf, ['certification' => 2, 'lock' => ['amount'], 'field' => 'approver']);
+
+// …или работать с PdfSigner из php-pdf напрямую: видимые поля, поля для последующих
+// подписантов, ключ вне сервера (плагин КриптоПро, HSM).
+// (ExternalSigner — это Dskripchenko\PhpPdf\Pdf\Signature\External\ExternalSigner.)
+$prepared = Pdf::signer($pdf)->prepare(Pdf::signatureConfig(['signer' => new ExternalSigner($userCert)]));
+
+// Заполнить подписанную форму, не нарушив подпись.
+$filled = Pdf::fillForm($signed)->setValue('amount', '100')->toBytes(incremental: true);
+
+// Долгосрочная валидация: DSS (B-LT) плюс штамп времени документа (B-LTA).
+$archived = Pdf::ltv($signed);
+
+// Проверить подписи по настроенным доверенным корням.
+$report = Pdf::validate($archived);
+$report->allValid();
+```
+
+Подписи по умолчанию — PAdES (`ETSI.CAdES.detached`); работают ключи RSA, ECDSA и
+ГОСТ Р 34.10-2012 (для ГОСТ в PHP должен быть загружен движок gost библиотеки
+OpenSSL). К службам штампов времени, OCSP-ответчикам и CRL обращаются через
+HTTP-клиент Laravel, поэтому прокси применяются, а в тестах работает `Http::fake()`.
+Полный набор возможностей — в [руководстве по подписи](https://github.com/dskripchenko/php-pdf/blob/main/docs/ru/SIGNING.md).
+
 ## Настройка
 
 `config/php-pdf.php` задаёт умолчания страницы и шрифты:
@@ -120,6 +157,26 @@ return response()->pdf($form, 'application.pdf', inline: false);
 ],
 
 'metadata' => ['Author' => 'ACME Corp.'],  // записи /Info по умолчанию
+
+'signing' => [
+    // PEM-сертификат + ключ (пути к файлам или PEM-текст)…
+    'certificate' => env('PHP_PDF_SIGN_CERT'),
+    'key' => env('PHP_PDF_SIGN_KEY'),
+    'passphrase' => env('PHP_PDF_SIGN_PASSPHRASE'),
+    // …или контейнер PKCS#12.
+    'pkcs12' => env('PHP_PDF_SIGN_P12'),
+    'pkcs12_password' => env('PHP_PDF_SIGN_P12_PASSWORD'),
+    'chain' => [],              // промежуточные сертификаты
+    'format' => 'pades',        // или 'pkcs7' (adbe.pkcs7.detached)
+    'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
+    'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
+],
+
+'validation' => [
+    'trust' => [],              // корневые сертификаты для Pdf::validate()
+    'system_trust' => false,    // добавить системные корни OpenSSL
+    'fetch_revocation' => false,
+],
 ```
 
 ## Переход с laravel-mpdf и обёрток barryvdh

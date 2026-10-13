@@ -71,7 +71,7 @@ return Pdf::render($document)->download('report.pdf');
 ```
 
 Everything from the underlying toolkit is reachable — charts, barcodes,
-AcroForm fields, PDF/A, encryption, PKCS#7 signing, and reading/merging
+AcroForm fields, PDF/A, encryption, digital signatures, and reading/merging
 existing PDFs. See the [php-pdf documentation](https://github.com/dskripchenko/php-pdf#documentation).
 
 ### Filling existing forms
@@ -97,6 +97,43 @@ return response()->pdf($form, 'application.pdf', inline: false);
 options; see [filling an existing form](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/USAGE.md#fill-an-existing-form-acroform)
 for the value rules and what `flatten()` does.
 
+### Digital signatures
+
+Configure the key once (`php-pdf.signing`, below), then:
+
+```php
+// Sign a generated document. A SignatureField in it is signed with its
+// stamp filled from the certificate; otherwise the signature is invisible.
+return Pdf::fromHtml($html)->signed(['reason' => 'Approved'])->download('contract.pdf');
+
+// Sign an existing PDF — or one signed before; earlier signatures stay valid.
+$signed = Pdf::sign(storage_path('contract.pdf'), ['reason' => 'Countersigned']);
+
+// Certify for form filling, lock fields, sign a named field…
+$signed = Pdf::sign($pdf, ['certification' => 2, 'lock' => ['amount'], 'field' => 'approver']);
+
+// …or drive php-pdf's PdfSigner directly: visible fields, fields for later
+// signers, a key outside the server (CryptoPro plug-in, HSM).
+// (ExternalSigner is Dskripchenko\PhpPdf\Pdf\Signature\External\ExternalSigner.)
+$prepared = Pdf::signer($pdf)->prepare(Pdf::signatureConfig(['signer' => new ExternalSigner($userCert)]));
+
+// Fill a signed form without breaking the signature.
+$filled = Pdf::fillForm($signed)->setValue('amount', '100')->toBytes(incremental: true);
+
+// Long-term validation: DSS (B-LT) plus a document timestamp (B-LTA).
+$archived = Pdf::ltv($signed);
+
+// Check signatures against the configured trust anchors.
+$report = Pdf::validate($archived);
+$report->allValid();
+```
+
+Signatures are PAdES (`ETSI.CAdES.detached`) by default; RSA, ECDSA and
+GOST R 34.10-2012 keys work (GOST needs OpenSSL's gost engine loaded into
+PHP). Timestamp authorities, OCSP responders and CRLs are reached through
+Laravel's HTTP client, so proxies apply and `Http::fake()` works in tests.
+The full feature set is in the [signing guide](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/SIGNING.md).
+
 ## Configuration
 
 `config/php-pdf.php` controls page defaults and fonts:
@@ -118,6 +155,26 @@ for the value rules and what `flatten()` does.
 ],
 
 'metadata' => ['Author' => 'ACME Corp.'],  // default /Info entries
+
+'signing' => [
+    // PEM certificate + key (file paths or PEM text)…
+    'certificate' => env('PHP_PDF_SIGN_CERT'),
+    'key' => env('PHP_PDF_SIGN_KEY'),
+    'passphrase' => env('PHP_PDF_SIGN_PASSPHRASE'),
+    // …or a PKCS#12 container.
+    'pkcs12' => env('PHP_PDF_SIGN_P12'),
+    'pkcs12_password' => env('PHP_PDF_SIGN_P12_PASSWORD'),
+    'chain' => [],              // intermediate certificates
+    'format' => 'pades',        // or 'pkcs7' (adbe.pkcs7.detached)
+    'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
+    'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
+],
+
+'validation' => [
+    'trust' => [],              // root certificates for Pdf::validate()
+    'system_trust' => false,    // add OpenSSL's system roots
+    'fetch_revocation' => false,
+],
 ```
 
 ## Migrating from laravel-mpdf / barryvdh wrappers
@@ -131,7 +188,7 @@ call sites.
 
 - PHP 8.2+
 - Laravel 11, 12, or 13
-- Extensions: `mbstring`, `zlib`, `dom` (plus `openssl` for encryption/signing)
+- Extensions: `mbstring`, `zlib`, `dom` (plus `openssl` for encryption and signatures)
 
 ## Testing
 
