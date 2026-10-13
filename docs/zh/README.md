@@ -120,6 +120,10 @@ $archived = Pdf::ltv($signed);
 // 依据已配置的信任锚校验签名。
 $report = Pdf::validate($archived);
 $report->allValid();
+
+// 文件旁的分离式 .p7s（CAdES）及其验证。
+$p7s = Pdf::signDetached(storage_path('invoice.xml'));
+Pdf::verifyDetached(storage_path('invoice.xml'), $p7s)->isValid();
 ```
 
 签名默认为 PAdES（`ETSI.CAdES.detached`）；支持 RSA、ECDSA 与
@@ -127,6 +131,11 @@ GOST R 34.10-2012 密钥（GOST 需要将 OpenSSL 的 gost 引擎加载到 PHP �
 时间戳服务、OCSP 响应方与 CRL 都通过 Laravel 的 HTTP 客户端访问，因此代理设置生效，
 测试中也可使用 `Http::fake()`。
 完整功能见[签名指南](https://github.com/dskripchenko/php-pdf/blob/main/docs/zh/SIGNING.md)。
+
+当这些 URL 来自用户或上传的证书时，请开启
+`signing.network.block_private_networks`：主机解析到的每个地址都必须是公网地址
+（不允许回环、私有、链路本地及云元数据地址段，`allowed_cidrs` 中列出的除外），
+重定向同样受检，连接直接使用已检查的地址，响应大小受 `max_response_bytes` 限制。
 
 ## 配置
 
@@ -162,6 +171,7 @@ GOST R 34.10-2012 密钥（GOST 需要将 OpenSSL 的 gost 引擎加载到 PHP �
     'format' => 'pades',        // 或 'pkcs7'（adbe.pkcs7.detached）
     'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
     'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
+    'network' => ['block_private_networks' => false, 'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024],
 ],
 
 'validation' => [

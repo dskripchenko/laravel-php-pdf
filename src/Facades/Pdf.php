@@ -24,6 +24,9 @@ use Illuminate\Support\Facades\Facade;
  * @method static \Dskripchenko\PhpPdf\Pdf\Signature\Validation\ValidationReport validate(string $pdf, string $password = '')
  * @method static \Dskripchenko\PhpPdf\Pdf\Signature\Validation\TrustStore trustStore()
  * @method static \Dskripchenko\LaravelPhpPdf\Signing\LaravelHttpTransport httpTransport()
+ * @method static \Dskripchenko\LaravelPhpPdf\Signing\UrlPolicy urlPolicy()
+ * @method static string signDetached(string $content, array<string, mixed> $options = [])
+ * @method static \Dskripchenko\PhpPdf\Pdf\Signature\Validation\SignatureReport verifyDetached(string $content, string $signature)
  *
  * @see PdfFactory
  */

@@ -82,6 +82,12 @@ return [
     | With a timestamp authority URL, signatures carry an RFC 3161 timestamp
     | (PAdES B-T). GOST keys need OpenSSL's gost engine loaded into PHP.
     |
+    | `network` guards the requests signing makes (TSA, OCSP, CRL, issuer
+    | certificates). Turn `block_private_networks` on when those URLs come
+    | from users or from uploaded certificates: every address a host
+    | resolves to must then be public, unless listed in `allowed_cidrs`
+    | (an internal timestamp authority, say).
+    |
     */
 
     'signing' => [
@@ -103,6 +109,12 @@ return [
             'policy' => null,
             'headers' => [],
             'timeout' => 15,
+        ],
+        'network' => [
+            'block_private_networks' => env('PHP_PDF_SIGN_BLOCK_PRIVATE', false),
+            'allowed_cidrs' => [],
+            'max_response_bytes' => 20 * 1024 * 1024,
+            'max_redirects' => 3,
         ],
     ],
 

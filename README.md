@@ -126,6 +126,10 @@ $archived = Pdf::ltv($signed);
 // Check signatures against the configured trust anchors.
 $report = Pdf::validate($archived);
 $report->allValid();
+
+// A detached .p7s (CAdES) beside a file, and its check.
+$p7s = Pdf::signDetached(storage_path('invoice.xml'));
+Pdf::verifyDetached(storage_path('invoice.xml'), $p7s)->isValid();
 ```
 
 Signatures are PAdES (`ETSI.CAdES.detached`) by default; RSA, ECDSA and
@@ -133,6 +137,13 @@ GOST R 34.10-2012 keys work (GOST needs OpenSSL's gost engine loaded into
 PHP). Timestamp authorities, OCSP responders and CRLs are reached through
 Laravel's HTTP client, so proxies apply and `Http::fake()` works in tests.
 The full feature set is in the [signing guide](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/SIGNING.md).
+
+When those URLs come from users or from uploaded certificates, turn on
+`signing.network.block_private_networks`: every address a host resolves to
+must then be public (no loopback, private, link-local or metadata ranges,
+unless listed in `allowed_cidrs`), redirects are checked the same way, the
+connection goes to the address that was checked, and responses are capped
+at `max_response_bytes`.
 
 ## Configuration
 
@@ -168,6 +179,7 @@ The full feature set is in the [signing guide](https://github.com/dskripchenko/p
     'format' => 'pades',        // or 'pkcs7' (adbe.pkcs7.detached)
     'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
     'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
+    'network' => ['block_private_networks' => false, 'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024],
 ],
 
 'validation' => [

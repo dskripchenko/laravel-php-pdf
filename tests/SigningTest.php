@@ -204,4 +204,25 @@ final class SigningTest extends TestCase
         self::assertSame('crl-bytes', $response->body);
         self::assertSame('application/pkix-crl', $response->header('Content-Type'));
     }
+
+    #[Test]
+    public function a_detached_signature_is_made_and_verified(): void
+    {
+        $content = "any bytes\n";
+        $p7s = Pdf::signDetached($content, ['timestamp' => false]);
+
+        self::assertTrue(Pdf::verifyDetached($content, $p7s)->isValid());
+        self::assertFalse(Pdf::verifyDetached($content.'x', $p7s)->isValid());
+
+        $dir = sys_get_temp_dir().'/lpp-detached-'.bin2hex(random_bytes(4));
+        mkdir($dir);
+        file_put_contents("$dir/doc.bin", $content);
+        file_put_contents("$dir/doc.bin.p7s", $p7s);
+        try {
+            self::assertTrue(Pdf::verifyDetached("$dir/doc.bin", "$dir/doc.bin.p7s")->isValid());
+        } finally {
+            array_map('unlink', (array) glob("$dir/*"));
+            rmdir($dir);
+        }
+    }
 }

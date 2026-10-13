@@ -127,6 +127,10 @@ $archived = Pdf::ltv($signed);
 // Проверить подписи по настроенным доверенным корням.
 $report = Pdf::validate($archived);
 $report->allValid();
+
+// Откреплённая .p7s (CAdES) рядом с файлом и её проверка.
+$p7s = Pdf::signDetached(storage_path('invoice.xml'));
+Pdf::verifyDetached(storage_path('invoice.xml'), $p7s)->isValid();
 ```
 
 Подписи по умолчанию — PAdES (`ETSI.CAdES.detached`); работают ключи RSA, ECDSA и
@@ -134,6 +138,13 @@ $report->allValid();
 OpenSSL). К службам штампов времени, OCSP-ответчикам и CRL обращаются через
 HTTP-клиент Laravel, поэтому прокси применяются, а в тестах работает `Http::fake()`.
 Полный набор возможностей — в [руководстве по подписи](https://github.com/dskripchenko/php-pdf/blob/main/docs/ru/SIGNING.md).
+
+Если эти адреса приходят от пользователей или из загруженных
+сертификатов, включите `signing.network.block_private_networks`: тогда
+каждый адрес, в который разрешается хост, обязан быть публичным (никаких
+loopback, частных, link-local диапазонов и адресов метаданных облака, кроме
+перечисленных в `allowed_cidrs`), редиректы проверяются так же, соединение
+идёт на проверенный адрес, а ответ ограничен `max_response_bytes`.
 
 ## Настройка
 
@@ -170,6 +181,7 @@ HTTP-клиент Laravel, поэтому прокси применяются, �
     'format' => 'pades',        // или 'pkcs7' (adbe.pkcs7.detached)
     'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
     'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
+    'network' => ['block_private_networks' => false, 'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024],
 ],
 
 'validation' => [

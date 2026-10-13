@@ -130,6 +130,10 @@ $archived = Pdf::ltv($signed);
 // Signaturen gegen die konfigurierten Vertrauensanker prüfen.
 $report = Pdf::validate($archived);
 $report->allValid();
+
+// Eine abgetrennte .p7s (CAdES) neben einer Datei und ihre Prüfung.
+$p7s = Pdf::signDetached(storage_path('invoice.xml'));
+Pdf::verifyDetached(storage_path('invoice.xml'), $p7s)->isValid();
 ```
 
 Signaturen sind standardmäßig PAdES (`ETSI.CAdES.detached`); RSA-, ECDSA- und
@@ -138,6 +142,13 @@ von OpenSSL in PHP geladen ist). Zeitstempeldienste, OCSP-Responder und CRLs wer
 über den HTTP-Client von Laravel angesprochen, daher greifen Proxys und `Http::fake()`
 funktioniert in Tests.
 Der vollständige Funktionsumfang steht im [Signatur-Leitfaden](https://github.com/dskripchenko/php-pdf/blob/main/docs/de/SIGNING.md).
+
+Kommen diese URLs von Nutzern oder aus hochgeladenen Zertifikaten,
+`signing.network.block_private_networks` einschalten: Jede Adresse, zu der
+ein Host aufgelöst wird, muss dann öffentlich sein (kein Loopback, keine
+privaten, Link-Local- oder Metadaten-Bereiche, außer sie stehen in
+`allowed_cidrs`), Weiterleitungen werden ebenso geprüft, verbunden wird mit
+der geprüften Adresse, Antworten sind auf `max_response_bytes` begrenzt.
 
 ## Konfiguration
 
@@ -174,6 +185,7 @@ Der vollständige Funktionsumfang steht im [Signatur-Leitfaden](https://github.c
     'format' => 'pades',        // oder 'pkcs7' (adbe.pkcs7.detached)
     'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
     'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
+    'network' => ['block_private_networks' => false, 'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024],
 ],
 
 'validation' => [

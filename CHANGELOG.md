@@ -4,6 +4,26 @@ All notable changes to `dskripchenko/laravel-php-pdf` are documented in
 this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-10-13
+
+### Added
+- **Network policy for signing** — `Signing\UrlPolicy` and the
+  `signing.network` config block. Every request php-pdf makes through
+  `LaravelHttpTransport` (TSA, OCSP, CRL, issuer certificates), and every
+  redirect, passes it: only http/https, no credentials in URLs; with
+  `block_private_networks`, every address the host resolves to must be
+  public (loopback, RFC 1918, link-local, CGN, reserved ranges and
+  IPv4-mapped forms refused, `allowed_cidrs` excepted) and the connection is
+  pinned to the address checked. Responses are capped at
+  `max_response_bytes`. Refusals throw `Signing\UrlNotAllowed`.
+- `Pdf::signDetached($fileOrBytes)` / `Pdf::verifyDetached($fileOrBytes,
+  $signature)` — a detached CAdES `.p7s` with the configured key (and
+  timestamp authority), and its check against the configured trust anchors.
+- `Pdf::urlPolicy()`.
+
+### Changed
+- Requires `dskripchenko/php-pdf` ^1.16.
+
 ## [1.3.0] — 2026-10-13
 
 ### Added
