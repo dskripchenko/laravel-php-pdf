@@ -11,7 +11,9 @@ use Dskripchenko\PhpPdf\Pdf\Forms\ExistingFormFiller;
 use Dskripchenko\PhpPdf\Pdf\PdfFont;
 use Dskripchenko\PhpPdf\Font\Ttf\TtfFile;
 use Dskripchenko\LaravelPhpPdf\Signing\LaravelHttpTransport;
+use Dskripchenko\LaravelPhpPdf\Signing\UrlPolicy;
 use Dskripchenko\PhpPdf\Pdf\Signature\Appearance\SignatureAppearance;
+use Dskripchenko\PhpPdf\Pdf\Signature\Cms\DetachedSignature;
 use Dskripchenko\PhpPdf\Pdf\Signature\DocMdpPermission;
 use Dskripchenko\PhpPdf\Pdf\Signature\FieldLock;
 use Dskripchenko\PhpPdf\Pdf\Signature\Ltv\CertificateFetcher;
@@ -23,6 +25,7 @@ use Dskripchenko\PhpPdf\Pdf\Signature\Signer\OpenSslSigner;
 use Dskripchenko\PhpPdf\Pdf\Signature\Signer\Signer;
 use Dskripchenko\PhpPdf\Pdf\Signature\SubFilter;
 use Dskripchenko\PhpPdf\Pdf\Signature\Tsa\TsaClient;
+use Dskripchenko\PhpPdf\Pdf\Signature\Validation\SignatureReport;
 use Dskripchenko\PhpPdf\Pdf\Signature\Validation\SignatureValidator;
 use Dskripchenko\PhpPdf\Pdf\Signature\Validation\TrustStore;
 use Dskripchenko\PhpPdf\Pdf\Signature\Validation\ValidationReport;
@@ -247,10 +250,46 @@ class PdfFactory
         return $store;
     }
 
-    /** php-pdf's HTTP (TSA, OCSP, CRL) through Laravel's client. */
+    /** php-pdf's HTTP (TSA, OCSP, CRL) through Laravel's client, under `signing.network`. */
     public function httpTransport(): LaravelHttpTransport
     {
-        return new LaravelHttpTransport($this->http ?? new HttpFactory);
+        return new LaravelHttpTransport($this->http ?? new HttpFactory, $this->urlPolicy());
+    }
+
+    /** What signing may reach (`php-pdf.signing.network`). */
+    public function urlPolicy(): UrlPolicy
+    {
+        return UrlPolicy::fromConfig((array) ($this->config['signing']['network'] ?? []));
+    }
+
+    /**
+     * A detached CAdES signature (`.p7s`, DER) of a file or of bytes, with
+     * the configured key and, if one is configured, a timestamp (CAdES-T).
+     *
+     * @param  array{signer?: Signer, timestamp?: bool, signed_at?: \DateTimeInterface}  $options
+     */
+    public function signDetached(string $content, array $options = []): string
+    {
+        return DetachedSignature::sign(
+            self::fileOrBytes($content),
+            $options['signer'] ?? $this->configuredSigner(),
+            ($options['timestamp'] ?? true) === false ? null : $this->timestampAuthority(),
+            $options['signed_at'] ?? null,
+        );
+    }
+
+    /** Check a detached signature of a file or of bytes against the configured trust anchors. */
+    public function verifyDetached(string $content, string $signature): SignatureReport
+    {
+        $fetch = (bool) ($this->config['validation']['fetch_revocation'] ?? false);
+        $http = $this->httpTransport();
+
+        return DetachedSignature::verify(
+            self::fileOrBytes($content),
+            self::fileOrBytes($signature),
+            $this->trustStore(),
+            $fetch ? new OnlineRevocationSource(new OcspClient($http), new CrlFetcher($http)) : null,
+        );
     }
 
     /** The key from `php-pdf.signing`. */
@@ -287,6 +326,14 @@ class PdfFactory
         }
 
         return $content;
+    }
+
+    /** A path to a readable file is read; anything else is the bytes themselves. */
+    private static function fileOrBytes(string $value): string
+    {
+        $looksLikePath = $value !== '' && strlen($value) < 4096 && ! str_contains($value, "\0") && ! str_contains($value, "\n");
+
+        return $looksLikePath && is_file($value) ? (string) file_get_contents($value) : $value;
     }
 
     private function pdfBytes(string $pdf): string
