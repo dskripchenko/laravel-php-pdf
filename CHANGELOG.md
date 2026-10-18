@@ -4,7 +4,7 @@ All notable changes to `dskripchenko/laravel-php-pdf` are documented in
 this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] — 2026-10-18
 
 ### Added
 - `signing.signer` (`PHP_PDF_SIGNER`) — a container binding or class that
