@@ -48,6 +48,12 @@ Route::get('/report', fn () => Pdf::fromHtml($html)->stream('report.pdf'));
 Route::get('/report/download', fn () => Pdf::fromHtml($html)->streamDownload('report.pdf'));
 ```
 
+自 php-pdf 1.19 起，HTML 可以包含 `<style>` 块——层叠、选择器、`@media print`。
+页面尺寸、方向和页边距取自 `config/php-pdf.php`：`Pdf::fromHtml()` 不会应用
+HTML 中的 `@page` 规则。若要由 `@page` 决定，请用 php-pdf 解析 HTML 并渲染结果：
+`Pdf::render(\Dskripchenko\PhpPdf\Document::fromHtml($html))`
+（配置的字体会生效，默认元数据不会）。
+
 ### `response()->pdf()`
 
 这个宏接受 `PendingPdf`、php-pdf 的 `Document`（任一层）、已填写的表单（`Pdf::fillForm()`）或原始字节——
@@ -104,10 +110,10 @@ return Pdf::fromHtml($html)->signed(['reason' => 'Approved'])->download('contrac
 $signed = Pdf::sign(storage_path('contract.pdf'), ['reason' => 'Countersigned']);
 
 // 认证以允许填写表单、锁定字段、对具名字段签名……
-$signed = Pdf::sign($pdf, ['certification' => 2, 'lock' => ['amount'], 'field' => 'approver']);
+$signed = Pdf::sign(storage_path('contract.pdf'), ['certification' => 2, 'lock' => ['amount'], 'field' => 'approver']);
 
 // ……或直接使用 php-pdf 的 PdfSigner：可见签名域、为后续签署人预留的签名域、
-// 位于服务器之外的密钥（CryptoPro 插件、HSM）。
+// 位于用户浏览器中的密钥（CryptoPro 浏览器插件）。
 // （ExternalSigner 即 Dskripchenko\PhpPdf\Pdf\Signature\External\ExternalSigner。）
 $prepared = Pdf::signer($pdf)->prepare(Pdf::signatureConfig(['signer' => new ExternalSigner($userCert)]));
 
@@ -132,6 +138,33 @@ GOST R 34.10-2012 密钥（GOST 需要将 OpenSSL 的 gost 引擎加载到 PHP �
 测试中也可使用 `Http::fake()`。
 完整功能见[签名指南](https://github.com/dskripchenko/php-pdf/blob/main/docs/zh/SIGNING.md)。
 
+### PHP 之外的密钥：CryptoPro、HSM、云 KMS
+
+`Pdf::sign()`、`->signed()` 与 `Pdf::signatureConfig()` 的 `'signer'` 可接受任意
+php-pdf 签名器；此时不再需要配置的密钥（配置的时间戳服务、格式与签名原因仍然生效）。
+现成的签名器：
+
+```php
+use Dskripchenko\PhpPdfCryptoPro\CryptoProCadesSigner;   // dskripchenko/php-pdf-cryptopro
+use Dskripchenko\PhpPdfPkcs11\Pkcs11Signer;              // dskripchenko/php-pdf-pkcs11
+use Dskripchenko\PhpPdfCloudKms\Aws\AwsKmsSigner;        // dskripchenko/php-pdf-cloud-kms
+
+// CryptoPro CSP on the server — GOST R 34.10-2012.
+$signed = Pdf::sign(storage_path('contract.pdf'), ['signer' => CryptoProCadesSigner::fromThumbprint($thumbprint, pin: $pin)]);
+
+// An HSM, a smart card or a token through PKCS#11.
+$signed = Pdf::sign(storage_path('contract.pdf'), ['signer' => Pkcs11Signer::open($module, pin: $pin, keyLabel: 'pdf')]);
+
+// AWS KMS (Google Cloud KMS and Azure Key Vault likewise).
+return Pdf::fromHtml($html)
+    ->signed(['signer' => AwsKmsSigner::create('alias/pdf-signing', $certificatePem, region: 'eu-central-1')])
+    ->download('contract.pdf');
+```
+
+`Pdf::signDetached()` 同样接受 `'signer'`，但仅限返回原始签名的签名器
+（PKCS#11、云 KMS）——不包括 CryptoPro，它返回的是完整的 CMS。签名器对象没有对应的
+配置项：请在每次调用时传入，或继承 `PdfFactory` 并重写其公开的 `signatureConfig()`。
+
 当这些 URL 来自用户或上传的证书时，请开启
 `signing.network.block_private_networks`：主机解析到的每个地址都必须是公网地址
 （不允许回环、私有、链路本地及云元数据地址段，`allowed_cidrs` 中列出的除外），
@@ -139,11 +172,11 @@ GOST R 34.10-2012 密钥（GOST 需要将 OpenSSL 的 gost 引擎加载到 PHP �
 
 ## 配置
 
-`config/php-pdf.php` 控制页面默认值与字体：
+`config/php-pdf.php` 控制页面默认值、字体、默认元数据、签名与验证（节选）：
 
 ```php
-'paper' => 'a4',              // a3..a6, letter, legal, tabloid, executive
-'orientation' => 'portrait',
+'paper' => env('PHP_PDF_PAPER', 'a4'),             // a3..a6, letter, legal, tabloid, executive
+'orientation' => env('PHP_PDF_ORIENTATION', 'portrait'),
 'margins' => ['top' => null, 'right' => null, 'bottom' => null, 'left' => null], // 单位 pt
 
 'fonts' => [
@@ -168,16 +201,36 @@ GOST R 34.10-2012 密钥（GOST 需要将 OpenSSL 的 gost 引擎加载到 PHP �
     'pkcs12' => env('PHP_PDF_SIGN_P12'),
     'pkcs12_password' => env('PHP_PDF_SIGN_P12_PASSWORD'),
     'chain' => [],              // 中间证书
-    'format' => 'pades',        // 或 'pkcs7'（adbe.pkcs7.detached）
+    'format' => env('PHP_PDF_SIGN_FORMAT', 'pades'),  // 或 'pkcs7'（adbe.pkcs7.detached）
     'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
-    'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
-    'network' => ['block_private_networks' => false, 'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024],
+    'timestamp' => [
+        'url' => env('PHP_PDF_TSA_URL'),
+        'username' => env('PHP_PDF_TSA_USERNAME'), 'password' => env('PHP_PDF_TSA_PASSWORD'),
+        'policy' => null, 'headers' => [], 'timeout' => 15,
+    ],
+    'network' => [
+        'block_private_networks' => env('PHP_PDF_SIGN_BLOCK_PRIVATE', false),
+        'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024, 'max_redirects' => 3,
+    ],
 ],
 
 'validation' => [
     'trust' => [],              // Pdf::validate() 使用的根证书
     'system_trust' => false,    // 加入 OpenSSL 的系统根证书
     'fetch_revocation' => false,
+],
+```
+
+手头没有字体？[dskripchenko/php-pdf-fonts-liberation](https://github.com/dskripchenko/php-pdf-fonts-liberation)
+提供 Liberation Sans、Serif 与 Mono（拉丁、西里尔、希腊、希伯来字母），
+度量上与 Arial、Times New Roman 和 Courier New 兼容。将字体路径指向它：
+
+```php
+'fonts' => [
+    'default' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Regular.ttf'),
+    'bold' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Bold.ttf'),
+    'italic' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Italic.ttf'),
+    'bold_italic' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-BoldItalic.ttf'),
 ],
 ```
 
@@ -192,6 +245,7 @@ GOST R 34.10-2012 密钥（GOST 需要将 OpenSSL 的 gost 引擎加载到 PHP �
 
 - PHP 8.2+
 - Laravel 11、12 或 13
+- `dskripchenko/php-pdf` 1.16+（HTML 中使用 `<style>` CSS 需 1.19+）
 - 扩展：`mbstring`、`zlib`、`dom`（加密与签名还需 `openssl`）
 
 ## 测试
@@ -199,6 +253,17 @@ GOST R 34.10-2012 密钥（GOST 需要将 OpenSSL 的 gost 引擎加载到 PHP �
 ```bash
 composer test
 ```
+
+## php-pdf 家族
+
+| 包 | 新增能力 |
+|---|---|
+| [php-pdf](https://github.com/dskripchenko/php-pdf) | 核心：HTML（含 CSS）或构建器生成 PDF，读取、合并、填写表单、签名与验证。 |
+| **laravel-php-pdf**（本包） | Laravel 桥接：Blade 视图直接生成 PDF、`response()->pdf()`、按配置签名。 |
+| [php-pdf-fonts-liberation](https://github.com/dskripchenko/php-pdf-fonts-liberation) | Liberation Sans、Serif 与 Mono，度量上与 Arial、Times New Roman 和 Courier New 兼容（OFL 许可，独立于 MIT 核心之外）。 |
+| [php-pdf-cryptopro](https://github.com/dskripchenko/php-pdf-cryptopro) | 使用服务器上 CryptoPro CSP 中的密钥签名：GOST R 34.10-2012，俄罗斯合格电子签名。 |
+| [php-pdf-pkcs11](https://github.com/dskripchenko/php-pdf-pkcs11) | 通过 PKCS#11 使用 HSM、智能卡或 USB 令牌上的密钥签名。 |
+| [php-pdf-cloud-kms](https://github.com/dskripchenko/php-pdf-cloud-kms) | 使用 AWS KMS、Google Cloud KMS 或 Azure Key Vault 中的密钥签名。 |
 
 ## 许可证
 

@@ -50,6 +50,13 @@ Route::get('/report', fn () => Pdf::fromHtml($html)->stream('report.pdf'));
 Route::get('/report/download', fn () => Pdf::fromHtml($html)->streamDownload('report.pdf'));
 ```
 
+Das HTML darf ab php-pdf 1.19 `<style>`-Blöcke enthalten — Kaskade,
+Selektoren, `@media print`. Seitengröße, Ausrichtung und Ränder kommen aus
+`config/php-pdf.php`: Eine `@page`-Regel im HTML wird von `Pdf::fromHtml()`
+nicht angewendet. Soll `@page` entscheiden, das HTML mit php-pdf parsen und
+das Ergebnis rendern: `Pdf::render(\Dskripchenko\PhpPdf\Document::fromHtml($html))`
+(die konfigurierten Schriften gelten, die Standard-Metadaten nicht).
+
 ### `response()->pdf()`
 
 Das Makro nimmt ein `PendingPdf`, ein php-pdf-`Document` (beide Ebenen), ein
@@ -114,10 +121,10 @@ return Pdf::fromHtml($html)->signed(['reason' => 'Approved'])->download('contrac
 $signed = Pdf::sign(storage_path('contract.pdf'), ['reason' => 'Countersigned']);
 
 // Für das Ausfüllen von Formularen zertifizieren, Felder sperren, ein benanntes Feld signieren…
-$signed = Pdf::sign($pdf, ['certification' => 2, 'lock' => ['amount'], 'field' => 'approver']);
+$signed = Pdf::sign(storage_path('contract.pdf'), ['certification' => 2, 'lock' => ['amount'], 'field' => 'approver']);
 
 // …oder PdfSigner von php-pdf direkt nutzen: sichtbare Felder, Felder für spätere
-// Unterzeichner, ein Schlüssel außerhalb des Servers (CryptoPro-Plug-in, HSM).
+// Unterzeichner, ein Schlüssel im Browser des Nutzers (CryptoPro-Browser-Plug-in).
 // (ExternalSigner ist Dskripchenko\PhpPdf\Pdf\Signature\External\ExternalSigner.)
 $prepared = Pdf::signer($pdf)->prepare(Pdf::signatureConfig(['signer' => new ExternalSigner($userCert)]));
 
@@ -143,6 +150,36 @@ von OpenSSL in PHP geladen ist). Zeitstempeldienste, OCSP-Responder und CRLs wer
 funktioniert in Tests.
 Der vollständige Funktionsumfang steht im [Signatur-Leitfaden](https://github.com/dskripchenko/php-pdf/blob/main/docs/de/SIGNING.md).
 
+### Schlüssel außerhalb von PHP: CryptoPro, HSM, Cloud-KMS
+
+`Pdf::sign()`, `->signed()` und `Pdf::signatureConfig()` nehmen unter
+`'signer'` jeden php-pdf-Signer entgegen; der konfigurierte Schlüssel wird dann
+nicht gebraucht (konfigurierter Zeitstempeldienst, Format und Grund gelten
+weiterhin). Fertige Signer:
+
+```php
+use Dskripchenko\PhpPdfCryptoPro\CryptoProCadesSigner;   // dskripchenko/php-pdf-cryptopro
+use Dskripchenko\PhpPdfPkcs11\Pkcs11Signer;              // dskripchenko/php-pdf-pkcs11
+use Dskripchenko\PhpPdfCloudKms\Aws\AwsKmsSigner;        // dskripchenko/php-pdf-cloud-kms
+
+// CryptoPro CSP on the server — GOST R 34.10-2012.
+$signed = Pdf::sign(storage_path('contract.pdf'), ['signer' => CryptoProCadesSigner::fromThumbprint($thumbprint, pin: $pin)]);
+
+// An HSM, a smart card or a token through PKCS#11.
+$signed = Pdf::sign(storage_path('contract.pdf'), ['signer' => Pkcs11Signer::open($module, pin: $pin, keyLabel: 'pdf')]);
+
+// AWS KMS (Google Cloud KMS and Azure Key Vault likewise).
+return Pdf::fromHtml($html)
+    ->signed(['signer' => AwsKmsSigner::create('alias/pdf-signing', $certificatePem, region: 'eu-central-1')])
+    ->download('contract.pdf');
+```
+
+`Pdf::signDetached()` nimmt ebenfalls `'signer'`, aber nur einen Signer, der
+eine rohe Signatur liefert (PKCS#11, Cloud-KMS) — nicht CryptoPro, das ein
+vollständiges CMS zurückgibt. Für ein Signer-Objekt gibt es keinen
+Konfigurationsschlüssel: Es pro Aufruf übergeben oder `PdfFactory` erweitern
+und dessen öffentliches `signatureConfig()` überschreiben.
+
 Kommen diese URLs von Nutzern oder aus hochgeladenen Zertifikaten,
 `signing.network.block_private_networks` einschalten: Jede Adresse, zu der
 ein Host aufgelöst wird, muss dann öffentlich sein (kein Loopback, keine
@@ -152,11 +189,12 @@ der geprüften Adresse, Antworten sind auf `max_response_bytes` begrenzt.
 
 ## Konfiguration
 
-`config/php-pdf.php` steuert Seitenvorgaben und Schriften:
+`config/php-pdf.php` steuert Seitenvorgaben, Schriften, Standard-Metadaten,
+Signatur und Validierung (ein Auszug):
 
 ```php
-'paper' => 'a4',              // a3..a6, letter, legal, tabloid, executive
-'orientation' => 'portrait',
+'paper' => env('PHP_PDF_PAPER', 'a4'),             // a3..a6, letter, legal, tabloid, executive
+'orientation' => env('PHP_PDF_ORIENTATION', 'portrait'),
 'margins' => ['top' => null, 'right' => null, 'bottom' => null, 'left' => null], // pt
 
 'fonts' => [
@@ -182,16 +220,37 @@ der geprüften Adresse, Antworten sind auf `max_response_bytes` begrenzt.
     'pkcs12' => env('PHP_PDF_SIGN_P12'),
     'pkcs12_password' => env('PHP_PDF_SIGN_P12_PASSWORD'),
     'chain' => [],              // Zwischenzertifikate
-    'format' => 'pades',        // oder 'pkcs7' (adbe.pkcs7.detached)
+    'format' => env('PHP_PDF_SIGN_FORMAT', 'pades'),  // oder 'pkcs7' (adbe.pkcs7.detached)
     'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
-    'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
-    'network' => ['block_private_networks' => false, 'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024],
+    'timestamp' => [
+        'url' => env('PHP_PDF_TSA_URL'),
+        'username' => env('PHP_PDF_TSA_USERNAME'), 'password' => env('PHP_PDF_TSA_PASSWORD'),
+        'policy' => null, 'headers' => [], 'timeout' => 15,
+    ],
+    'network' => [
+        'block_private_networks' => env('PHP_PDF_SIGN_BLOCK_PRIVATE', false),
+        'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024, 'max_redirects' => 3,
+    ],
 ],
 
 'validation' => [
     'trust' => [],              // Wurzelzertifikate für Pdf::validate()
     'system_trust' => false,    // OpenSSL-Systemwurzeln hinzufügen
     'fetch_revocation' => false,
+],
+```
+
+Keine Schriften zur Hand? [dskripchenko/php-pdf-fonts-liberation](https://github.com/dskripchenko/php-pdf-fonts-liberation)
+liefert Liberation Sans, Serif und Mono (Latein, Kyrillisch, Griechisch,
+Hebräisch), metrisch kompatibel mit Arial, Times New Roman und Courier New.
+Die Schriftpfade darauf richten:
+
+```php
+'fonts' => [
+    'default' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Regular.ttf'),
+    'bold' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Bold.ttf'),
+    'italic' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Italic.ttf'),
+    'bold_italic' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-BoldItalic.ttf'),
 ],
 ```
 
@@ -206,6 +265,7 @@ und [FPDI](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/MIGRATION-F
 
 - PHP 8.2+
 - Laravel 11, 12 oder 13
+- `dskripchenko/php-pdf` 1.16+ (1.19+ für `<style>`-CSS im HTML)
 - Erweiterungen: `mbstring`, `zlib`, `dom` (plus `openssl` für Verschlüsselung und Signaturen)
 
 ## Tests
@@ -213,6 +273,17 @@ und [FPDI](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/MIGRATION-F
 ```bash
 composer test
 ```
+
+## Die php-pdf-Familie
+
+| Paket | Was es hinzufügt |
+|---|---|
+| [php-pdf](https://github.com/dskripchenko/php-pdf) | Der Kern: HTML mit CSS oder ein Builder zu PDF, Lesen, Zusammenführen, Formulare ausfüllen, Signieren und Validieren. |
+| **laravel-php-pdf** (dieses Paket) | Laravel-Brücke: eine Blade-View direkt als PDF, `response()->pdf()`, Signieren per Konfiguration. |
+| [php-pdf-fonts-liberation](https://github.com/dskripchenko/php-pdf-fonts-liberation) | Liberation Sans, Serif und Mono, metrisch kompatibel mit Arial, Times New Roman und Courier New (OFL, aus dem MIT-Kern herausgehalten). |
+| [php-pdf-cryptopro](https://github.com/dskripchenko/php-pdf-cryptopro) | Signiert mit einem Schlüssel in CryptoPro CSP auf dem Server: GOST R 34.10-2012, russische qualifizierte Signaturen. |
+| [php-pdf-pkcs11](https://github.com/dskripchenko/php-pdf-pkcs11) | Signiert mit einem Schlüssel auf einem HSM, einer Smartcard oder einem USB-Token über PKCS#11. |
+| [php-pdf-cloud-kms](https://github.com/dskripchenko/php-pdf-cloud-kms) | Signiert mit einem Schlüssel in AWS KMS, Google Cloud KMS oder Azure Key Vault. |
 
 ## Lizenz
 
