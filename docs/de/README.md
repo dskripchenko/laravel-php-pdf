@@ -174,11 +174,21 @@ return Pdf::fromHtml($html)
     ->download('contract.pdf');
 ```
 
-`Pdf::signDetached()` nimmt ebenfalls `'signer'`, aber nur einen Signer, der
-eine rohe Signatur liefert (PKCS#11, Cloud-KMS) — nicht CryptoPro, das ein
-vollständiges CMS zurückgibt. Für ein Signer-Objekt gibt es keinen
-Konfigurationsschlüssel: Es pro Aufruf übergeben oder `PdfFactory` erweitern
-und dessen öffentliches `signatureConfig()` überschreiben.
+Um überall damit zu signieren, den Signer im Container binden und die Bindung
+in `php-pdf.signing.signer` nennen — er ersetzt dann das konfigurierte
+Zertifikat samt Schlüssel und wird einmal aufgelöst:
+
+```php
+// AppServiceProvider::register()
+$this->app->singleton('pdf.signer', fn () => Pkcs11Signer::open(config('services.hsm.module'), pin: config('services.hsm.pin'), keyLabel: 'pdf'));
+
+// config/php-pdf.php → 'signing' => ['signer' => 'pdf.signer', …]   (or PHP_PDF_SIGNER=pdf.signer)
+$signed = Pdf::sign(storage_path('contract.pdf'));
+```
+
+`Pdf::signDetached()` nimmt `'signer'` und den konfigurierten Signer
+ebenfalls. Ein CryptoPro-Signer (ein `CmsSigner`, er liefert ein vollständiges
+CMS) braucht dort php-pdf 1.20 oder neuer.
 
 Kommen diese URLs von Nutzern oder aus hochgeladenen Zertifikaten,
 `signing.network.block_private_networks` einschalten: Jede Adresse, zu der
@@ -204,15 +214,20 @@ Signatur und Validierung (ein Auszug):
     'default' => storage_path('fonts/DejaVuSans.ttf'),
     'bold' => storage_path('fonts/DejaVuSans-Bold.ttf'),
     // Benannte Familien für CSS font-family / RunStyle(fontFamily: ...):
+    // Ein nicht konfigurierter Schnitt fällt auf den regulären zurück.
     'families' => [
-        'mono' => ['regular' => storage_path('fonts/DejaVuSansMono.ttf')],
+        'mono' => ['regular' => storage_path('fonts/DejaVuSansMono.ttf'), 'bold' => storage_path('fonts/DejaVuSansMono-Bold.ttf')],
     ],
+    // Ein FontProvider (Container-Bindung oder Klasse) für jede andere Familie.
+    'provider' => null,
 ],
 
 'metadata' => ['Author' => 'ACME Corp.'],  // Standardeinträge in /Info
 
 'signing' => [
-    // PEM-Zertifikat + Schlüssel (Dateipfade oder PEM-Text)…
+    // Ein im Container gebundener Signer / CmsSigner (CryptoPro, PKCS#11, Cloud-KMS)…
+    'signer' => env('PHP_PDF_SIGNER'),
+    // …oder PEM-Zertifikat + Schlüssel (Dateipfade oder PEM-Text)…
     'certificate' => env('PHP_PDF_SIGN_CERT'),
     'key' => env('PHP_PDF_SIGN_KEY'),
     'passphrase' => env('PHP_PDF_SIGN_PASSPHRASE'),
@@ -243,10 +258,13 @@ Signatur und Validierung (ein Auszug):
 Keine Schriften zur Hand? [dskripchenko/php-pdf-fonts-liberation](https://github.com/dskripchenko/php-pdf-fonts-liberation)
 liefert Liberation Sans, Serif und Mono (Latein, Kyrillisch, Griechisch,
 Hebräisch), metrisch kompatibel mit Arial, Times New Roman und Courier New.
-Die Schriftpfade darauf richten:
+Seinen Provider in `fonts.provider` eintragen — er übernimmt die Familien,
+die nicht in `families` stehen, `font-family: Arial` eingeschlossen — und die
+Standardschrift darauf richten:
 
 ```php
 'fonts' => [
+    'provider' => \Dskripchenko\PhpPdfFontsLiberation\LiberationFontProvider::class,
     'default' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Regular.ttf'),
     'bold' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Bold.ttf'),
     'italic' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Italic.ttf'),
@@ -265,7 +283,7 @@ und [FPDI](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/MIGRATION-F
 
 - PHP 8.2+
 - Laravel 11, 12 oder 13
-- `dskripchenko/php-pdf` 1.16+ (1.19+ für `<style>`-CSS im HTML)
+- `dskripchenko/php-pdf` 1.18+ (1.19+ für `<style>`-CSS im HTML)
 - Erweiterungen: `mbstring`, `zlib`, `dom` (plus `openssl` für Verschlüsselung und Signaturen)
 
 ## Tests

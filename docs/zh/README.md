@@ -161,9 +161,19 @@ return Pdf::fromHtml($html)
     ->download('contract.pdf');
 ```
 
-`Pdf::signDetached()` 同样接受 `'signer'`，但仅限返回原始签名的签名器
-（PKCS#11、云 KMS）——不包括 CryptoPro，它返回的是完整的 CMS。签名器对象没有对应的
-配置项：请在每次调用时传入，或继承 `PdfFactory` 并重写其公开的 `signatureConfig()`。
+若要处处使用它签名，请在容器中绑定它，并在 `php-pdf.signing.signer` 中写上该绑定名——
+此时它取代配置的证书与密钥，且只解析一次：
+
+```php
+// AppServiceProvider::register()
+$this->app->singleton('pdf.signer', fn () => Pkcs11Signer::open(config('services.hsm.module'), pin: config('services.hsm.pin'), keyLabel: 'pdf'));
+
+// config/php-pdf.php → 'signing' => ['signer' => 'pdf.signer', …]   (or PHP_PDF_SIGNER=pdf.signer)
+$signed = Pdf::sign(storage_path('contract.pdf'));
+```
+
+`Pdf::signDetached()` 同样接受 `'signer'` 以及配置的签名器。CryptoPro 签名器
+（即 `CmsSigner`，它返回完整的 CMS）在此需要 php-pdf 1.20 或更高版本。
 
 当这些 URL 来自用户或上传的证书时，请开启
 `signing.network.block_private_networks`：主机解析到的每个地址都必须是公网地址
@@ -185,15 +195,20 @@ return Pdf::fromHtml($html)
     'default' => storage_path('fonts/DejaVuSans.ttf'),
     'bold' => storage_path('fonts/DejaVuSans-Bold.ttf'),
     // 供 CSS font-family 与 RunStyle(fontFamily: ...) 使用的具名字族：
+    // 未配置的字形回退到常规字形。
     'families' => [
-        'mono' => ['regular' => storage_path('fonts/DejaVuSansMono.ttf')],
+        'mono' => ['regular' => storage_path('fonts/DejaVuSansMono.ttf'), 'bold' => storage_path('fonts/DejaVuSansMono-Bold.ttf')],
     ],
+    // 用于其他任意字族的 FontProvider（容器绑定或类）。
+    'provider' => null,
 ],
 
 'metadata' => ['Author' => 'ACME Corp.'],  // /Info 的默认条目
 
 'signing' => [
-    // PEM 证书 + 密钥（文件路径或 PEM 文本）……
+    // 在容器中绑定的 Signer / CmsSigner（CryptoPro、PKCS#11、云 KMS）……
+    'signer' => env('PHP_PDF_SIGNER'),
+    // ……或 PEM 证书 + 密钥（文件路径或 PEM 文本）……
     'certificate' => env('PHP_PDF_SIGN_CERT'),
     'key' => env('PHP_PDF_SIGN_KEY'),
     'passphrase' => env('PHP_PDF_SIGN_PASSPHRASE'),
@@ -223,10 +238,12 @@ return Pdf::fromHtml($html)
 
 手头没有字体？[dskripchenko/php-pdf-fonts-liberation](https://github.com/dskripchenko/php-pdf-fonts-liberation)
 提供 Liberation Sans、Serif 与 Mono（拉丁、西里尔、希腊、希伯来字母），
-度量上与 Arial、Times New Roman 和 Courier New 兼容。将字体路径指向它：
+度量上与 Arial、Times New Roman 和 Courier New 兼容。在 `fonts.provider` 中写上它的
+提供器——它负责 `families` 中未列出的字族，包括 `font-family: Arial`——并将默认字体指向它：
 
 ```php
 'fonts' => [
+    'provider' => \Dskripchenko\PhpPdfFontsLiberation\LiberationFontProvider::class,
     'default' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Regular.ttf'),
     'bold' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Bold.ttf'),
     'italic' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Italic.ttf'),
@@ -245,7 +262,7 @@ return Pdf::fromHtml($html)
 
 - PHP 8.2+
 - Laravel 11、12 或 13
-- `dskripchenko/php-pdf` 1.16+（HTML 中使用 `<style>` CSS 需 1.19+）
+- `dskripchenko/php-pdf` 1.18+（HTML 中使用 `<style>` CSS 需 1.19+）
 - 扩展：`mbstring`、`zlib`、`dom`（加密与签名还需 `openssl`）
 
 ## 测试

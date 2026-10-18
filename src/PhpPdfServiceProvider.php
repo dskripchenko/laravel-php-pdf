@@ -18,7 +18,7 @@ class PhpPdfServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/php-pdf.php', 'php-pdf');
 
         $this->app->singleton(PdfFactory::class, function ($app): PdfFactory {
-            return new PdfFactory((array) $app['config']->get('php-pdf', []), $app->make(\Illuminate\Http\Client\Factory::class));
+            return new PdfFactory((array) $app['config']->get('php-pdf', []), $app->make(\Illuminate\Http\Client\Factory::class), $app);
         });
         $this->app->alias(PdfFactory::class, 'php-pdf');
     }
