@@ -4,6 +4,29 @@ All notable changes to `dskripchenko/laravel-php-pdf` are documented in
 this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `signing.signer` (`PHP_PDF_SIGNER`) — a container binding or class that
+  resolves to a php-pdf `Signer` or `CmsSigner` (CryptoPro CSP, a PKCS#11
+  token or HSM, a cloud KMS). It replaces the configured certificate and
+  key for `Pdf::sign()`, `->signed()`, `Pdf::signatureConfig()` and
+  `Pdf::signDetached()`, and is resolved once.
+- `fonts.provider` — a php-pdf `FontProvider` (binding or class), asked for
+  the families not listed in `fonts.families`; e.g. the Liberation fonts
+  with their Arial / Times New Roman / Courier New aliases.
+
+### Fixed
+- The `bold`, `italic` and `bold_italic` faces of a family in
+  `fonts.families` were never used: bold text in a configured family came
+  out in the regular face. Each face now answers for itself; one that is
+  not configured falls back to the regular face.
+- `Pdf::signDetached()` with a `CmsSigner` failed with a TypeError; it now
+  works with php-pdf 1.20+ and says so clearly on older versions.
+
+### Changed
+- Requires `dskripchenko/php-pdf` ^1.18 (was ^1.16) for `CmsSigner`.
+
 ## [1.4.0] — 2026-10-13
 
 ### Added

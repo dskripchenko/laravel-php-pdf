@@ -46,6 +46,12 @@ return [
     |     ],
     | ],
     |
+    | `provider` names a php-pdf FontProvider — a container binding or a
+    | class — asked for the families not listed here, e.g. the Liberation
+    | fonts (Arial, Times New Roman, Courier New aliases included):
+    |
+    | 'provider' => \Dskripchenko\PhpPdfFontsLiberation\LiberationFontProvider::class,
+    |
     */
 
     'fonts' => [
@@ -54,6 +60,7 @@ return [
         'italic' => env('PHP_PDF_FONT_ITALIC'),
         'bold_italic' => env('PHP_PDF_FONT_BOLD_ITALIC'),
         'families' => [],
+        'provider' => null,
     ],
 
     /*
@@ -82,6 +89,14 @@ return [
     | With a timestamp authority URL, signatures carry an RFC 3161 timestamp
     | (PAdES B-T). GOST keys need OpenSSL's gost engine loaded into PHP.
     |
+    | A key outside PHP — CryptoPro CSP, a PKCS#11 token or HSM, a cloud KMS
+    | — comes from `signer`: a container binding (or a class) that resolves
+    | to a php-pdf Signer or CmsSigner. It replaces the certificate and key
+    | above and is resolved once. Bind it in a service provider:
+    |
+    | $this->app->singleton('pdf.signer', fn () => Pkcs11Signer::open(...));
+    | // 'signer' => 'pdf.signer',
+    |
     | `network` guards the requests signing makes (TSA, OCSP, CRL, issuer
     | certificates). Turn `block_private_networks` on when those URLs come
     | from users or from uploaded certificates: every address a host
@@ -91,6 +106,7 @@ return [
     */
 
     'signing' => [
+        'signer' => env('PHP_PDF_SIGNER'),
         'certificate' => env('PHP_PDF_SIGN_CERT'),
         'key' => env('PHP_PDF_SIGN_KEY'),
         'passphrase' => env('PHP_PDF_SIGN_PASSPHRASE'),

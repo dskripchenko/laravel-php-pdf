@@ -7,12 +7,12 @@
     "homepage": "https://github.com/dskripchenko/laravel-php-pdf",
     "require": {
         "php": "^8.2",
-        "dskripchenko/php-pdf": "^1.16",
+        "dskripchenko/php-pdf": "^1.18",
         "illuminate/http": "^11.0 || ^12.0 || ^13.0",
         "illuminate/support": "^11.0 || ^12.0 || ^13.0"
     },
     "require-dev": {
-        "dskripchenko/php-pdf-fonts-liberation": "^1.0",
+        "dskripchenko/php-pdf-fonts-liberation": "^1.1",
         "orchestra/testbench": "^9.0 || ^10.0 || ^11.0"
     },
     "autoload": {

@@ -9,6 +9,8 @@ use Dskripchenko\PhpPdf\Document;
 use Dskripchenko\PhpPdf\Layout\Engine;
 use Dskripchenko\PhpPdf\Pdf\Forms\ExistingFormFiller;
 use Dskripchenko\PhpPdf\Pdf\PdfFont;
+use Dskripchenko\PhpPdf\Font\ChainedFontProvider;
+use Dskripchenko\PhpPdf\Font\FontProvider;
 use Dskripchenko\PhpPdf\Font\Ttf\TtfFile;
 use Dskripchenko\LaravelPhpPdf\Signing\LaravelHttpTransport;
 use Dskripchenko\LaravelPhpPdf\Signing\UrlPolicy;
@@ -21,6 +23,7 @@ use Dskripchenko\PhpPdf\Pdf\Signature\Ltv\CrlFetcher;
 use Dskripchenko\PhpPdf\Pdf\Signature\Ltv\OcspClient;
 use Dskripchenko\PhpPdf\Pdf\Signature\Ltv\OnlineRevocationSource;
 use Dskripchenko\PhpPdf\Pdf\Signature\PdfSigner;
+use Dskripchenko\PhpPdf\Pdf\Signature\Signer\CmsSigner;
 use Dskripchenko\PhpPdf\Pdf\Signature\Signer\OpenSslSigner;
 use Dskripchenko\PhpPdf\Pdf\Signature\Signer\Signer;
 use Dskripchenko\PhpPdf\Pdf\Signature\SubFilter;
@@ -31,6 +34,7 @@ use Dskripchenko\PhpPdf\Pdf\Signature\Validation\TrustStore;
 use Dskripchenko\PhpPdf\Pdf\Signature\Validation\ValidationReport;
 use Dskripchenko\PhpPdf\Pdf\SignatureConfig;
 use Dskripchenko\PhpPdf\Section;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Dskripchenko\PhpPdf\Style\Orientation;
 use Dskripchenko\PhpPdf\Style\PageMargins;
@@ -51,9 +55,13 @@ class PdfFactory
     /**
      * @param  array<string, mixed>  $config  The `php-pdf` config array.
      */
+    /** The signer from `php-pdf.signing.signer`, resolved once. */
+    private Signer|CmsSigner|null $boundSigner = null;
+
     public function __construct(
         private readonly array $config = [],
         private readonly ?HttpFactory $http = null,
+        private readonly ?Container $container = null,
     ) {}
 
     /**
@@ -266,13 +274,18 @@ class PdfFactory
      * A detached CAdES signature (`.p7s`, DER) of a file or of bytes, with
      * the configured key and, if one is configured, a timestamp (CAdES-T).
      *
-     * @param  array{signer?: Signer, timestamp?: bool, signed_at?: \DateTimeInterface}  $options
+     * @param  array{signer?: Signer|CmsSigner, timestamp?: bool, signed_at?: \DateTimeInterface}  $options
      */
     public function signDetached(string $content, array $options = []): string
     {
+        $signer = $options['signer'] ?? $this->configuredSigner();
+        if ($signer instanceof CmsSigner && ! self::detachedTakesCmsSigner()) {
+            throw new \LogicException('A detached signature with a CmsSigner (CryptoPro CSP, a signing service) needs dskripchenko/php-pdf 1.20 or later');
+        }
+
         return DetachedSignature::sign(
             self::fileOrBytes($content),
-            $options['signer'] ?? $this->configuredSigner(),
+            $signer,
             ($options['timestamp'] ?? true) === false ? null : $this->timestampAuthority(),
             $options['signed_at'] ?? null,
         );
@@ -293,9 +306,13 @@ class PdfFactory
     }
 
     /** The key from `php-pdf.signing`. */
-    private function configuredSigner(): Signer
+    private function configuredSigner(): Signer|CmsSigner
     {
         $cfg = (array) ($this->config['signing'] ?? []);
+        $bound = $cfg['signer'] ?? null;
+        if (is_string($bound) && $bound !== '') {
+            return $this->boundSigner ??= $this->resolveBinding($bound, 'signing.signer', [Signer::class, CmsSigner::class]);
+        }
         $p12 = $cfg['pkcs12'] ?? null;
         if (is_string($p12) && $p12 !== '') {
             return OpenSslSigner::fromPkcs12(self::content($p12), (string) ($cfg['pkcs12_password'] ?? ''));
@@ -312,6 +329,46 @@ class PdfFactory
             $cfg['passphrase'] ?? null,
             array_map(static fn (mixed $c): string => self::content((string) $c), array_values((array) ($cfg['chain'] ?? []))),
         );
+    }
+
+    private function configuredFontProvider(mixed $binding): ?FontProvider
+    {
+        if (! is_string($binding) || $binding === '') {
+            return null;
+        }
+
+        return $this->resolveBinding($binding, 'fonts.provider', [FontProvider::class]);
+    }
+
+    /**
+     * A container binding or a class name from the config, checked against
+     * the types it must have.
+     *
+     * @template T of object
+     *
+     * @param  list<class-string<T>>  $types
+     * @return T
+     */
+    private function resolveBinding(string $id, string $key, array $types): object
+    {
+        $object = $this->container !== null
+            ? $this->container->make($id)
+            : (class_exists($id) ? new $id : throw new \LogicException("php-pdf.$key '$id' needs the Laravel container to resolve"));
+        foreach ($types as $type) {
+            if ($object instanceof $type) {
+                return $object;
+            }
+        }
+
+        throw new \LogicException(sprintf("php-pdf.%s '%s' resolved to %s, not a %s", $key, $id, get_debug_type($object), implode(' or ', $types)));
+    }
+
+    /** Whether the installed php-pdf signs detached with a CmsSigner (1.20+). */
+    private static function detachedTakesCmsSigner(): bool
+    {
+        $type = (new \ReflectionMethod(DetachedSignature::class, 'sign'))->getParameters()[1]->getType();
+
+        return $type !== null && str_contains((string) $type, 'CmsSigner');
     }
 
     /** A config value that is either the content itself or a file path. */
@@ -363,8 +420,9 @@ class PdfFactory
         $fonts = (array) ($this->config['fonts'] ?? []);
         $families = (array) ($fonts['families'] ?? []);
         $hasSingles = ($fonts['default'] ?? null) !== null;
+        $provider = $this->configuredFontProvider($fonts['provider'] ?? null);
 
-        if (! $hasSingles && $families === []) {
+        if (! $hasSingles && $families === [] && $provider === null) {
             return $this->engine = null;
         }
 
@@ -384,7 +442,12 @@ class PdfFactory
             boldFont: $load($fonts['bold'] ?? null),
             italicFont: $load($fonts['italic'] ?? null),
             boldItalicFont: $load($fonts['bold_italic'] ?? null),
-            fontProvider: $families === [] ? null : new ConfigFontProvider($families),
+            fontProvider: match (true) {
+                $families === [] => $provider,
+                $provider === null => new ConfigFontProvider($families),
+                // The configured families first, then the provider.
+                default => new ChainedFontProvider(new ConfigFontProvider($families), $provider),
+            },
         );
     }
 

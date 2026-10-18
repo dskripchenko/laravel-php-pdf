@@ -6,6 +6,8 @@ namespace Dskripchenko\LaravelPhpPdf\Tests;
 
 use Dskripchenko\LaravelPhpPdf\Facades\Pdf;
 use Dskripchenko\LaravelPhpPdf\PdfFactory;
+use Dskripchenko\LaravelPhpPdf\Tests\Support\OpenSslCmsSigner;
+use Dskripchenko\PhpPdf\Pdf\Signature\Signer\OpenSslSigner;
 use Dskripchenko\PhpPdf\Document;
 use Dskripchenko\PhpPdf\Element\Paragraph;
 use Dskripchenko\PhpPdf\Element\Run;
@@ -224,5 +226,78 @@ final class SigningTest extends TestCase
             array_map('unlink', (array) glob("$dir/*"));
             rmdir($dir);
         }
+    }
+
+    private function refreshFactory(): void
+    {
+        $this->app->forgetInstance(PdfFactory::class);
+        Pdf::clearResolvedInstances();
+    }
+
+    #[Test]
+    public function a_signer_bound_in_the_container_signs_instead_of_the_configured_key(): void
+    {
+        $made = 0;
+        $this->app->singleton('pdf.signer', function () use (&$made): OpenSslSigner {
+            $made++;
+
+            return new OpenSslSigner(self::$cert, self::$key);
+        });
+        config()->set('php-pdf.signing.signer', 'pdf.signer');
+        config()->set('php-pdf.signing.certificate', null);
+        config()->set('php-pdf.signing.key', null);
+        $this->refreshFactory();
+
+        $first = Pdf::sign($this->unsignedPdf());
+        $second = Pdf::sign($first);
+
+        self::assertTrue(Pdf::validate($second)->allValid());
+        self::assertCount(2, Pdf::validate($second)->signatures);
+        self::assertSame(1, $made, 'Resolved once');
+    }
+
+    #[Test]
+    public function a_cms_signer_from_the_container_signs_too(): void
+    {
+        $signer = new OpenSslCmsSigner(self::$cert, self::$key);
+        $this->app->instance('pdf.signer', $signer);
+        config()->set('php-pdf.signing.signer', 'pdf.signer');
+        $this->refreshFactory();
+
+        self::assertTrue(Pdf::validate(Pdf::sign($this->unsignedPdf()))->allValid());
+        self::assertSame(1, $signer->calls);
+    }
+
+    #[Test]
+    public function a_binding_that_is_not_a_signer_is_refused(): void
+    {
+        $this->app->instance('pdf.signer', new \stdClass);
+        config()->set('php-pdf.signing.signer', 'pdf.signer');
+        $this->refreshFactory();
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage("php-pdf.signing.signer 'pdf.signer' resolved to stdClass");
+        Pdf::sign($this->unsignedPdf());
+    }
+
+    #[Test]
+    public function a_detached_signature_with_a_cms_signer(): void
+    {
+        $signer = new OpenSslCmsSigner(self::$cert, self::$key);
+        $type = (string) (new \ReflectionMethod(\Dskripchenko\PhpPdf\Pdf\Signature\Cms\DetachedSignature::class, 'sign'))->getParameters()[1]->getType();
+
+        if (! str_contains($type, 'CmsSigner')) {
+            // php-pdf before 1.20: a clear message instead of a TypeError.
+            $this->expectException(\LogicException::class);
+            $this->expectExceptionMessage('needs dskripchenko/php-pdf 1.20');
+        }
+        $p7s = Pdf::signDetached('invoice bytes', ['signer' => $signer, 'timestamp' => false]);
+
+        self::assertTrue(Pdf::verifyDetached('invoice bytes', $p7s)->isValid());
+    }
+
+    private function unsignedPdf(): string
+    {
+        return Pdf::fromHtml('<p>Contract</p>')->bytes();
     }
 }
