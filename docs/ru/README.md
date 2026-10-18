@@ -50,6 +50,13 @@ Route::get('/report', fn () => Pdf::fromHtml($html)->stream('report.pdf'));
 Route::get('/report/download', fn () => Pdf::fromHtml($html)->streamDownload('report.pdf'));
 ```
 
+HTML может содержать блоки `<style>` — каскад, селекторы, `@media print` —
+начиная с php-pdf 1.19. Размер страницы, ориентация и поля берутся из
+`config/php-pdf.php`: правило `@page` в HTML методом `Pdf::fromHtml()` не
+применяется. Чтобы размер задавал `@page`, разберите HTML средствами php-pdf
+и отрисуйте результат: `Pdf::render(\Dskripchenko\PhpPdf\Document::fromHtml($html))`
+(настроенные шрифты применяются, метаданные по умолчанию — нет).
+
 ### `response()->pdf()`
 
 Макрос принимает `PendingPdf`, `Document` из php-pdf (любого слоя),
@@ -111,10 +118,10 @@ return Pdf::fromHtml($html)->signed(['reason' => 'Approved'])->download('contrac
 $signed = Pdf::sign(storage_path('contract.pdf'), ['reason' => 'Countersigned']);
 
 // Сертифицировать для заполнения форм, заблокировать поля, подписать именованное поле…
-$signed = Pdf::sign($pdf, ['certification' => 2, 'lock' => ['amount'], 'field' => 'approver']);
+$signed = Pdf::sign(storage_path('contract.pdf'), ['certification' => 2, 'lock' => ['amount'], 'field' => 'approver']);
 
 // …или работать с PdfSigner из php-pdf напрямую: видимые поля, поля для последующих
-// подписантов, ключ вне сервера (плагин КриптоПро, HSM).
+// подписантов, ключ в браузере пользователя (браузерный плагин КриптоПро).
 // (ExternalSigner — это Dskripchenko\PhpPdf\Pdf\Signature\External\ExternalSigner.)
 $prepared = Pdf::signer($pdf)->prepare(Pdf::signatureConfig(['signer' => new ExternalSigner($userCert)]));
 
@@ -139,6 +146,35 @@ OpenSSL). К службам штампов времени, OCSP-ответчик
 HTTP-клиент Laravel, поэтому прокси применяются, а в тестах работает `Http::fake()`.
 Полный набор возможностей — в [руководстве по подписи](https://github.com/dskripchenko/php-pdf/blob/main/docs/ru/SIGNING.md).
 
+### Ключи вне PHP: КриптоПро, HSM, облачные KMS
+
+`Pdf::sign()`, `->signed()` и `Pdf::signatureConfig()` принимают в `'signer'`
+любой подписант php-pdf; настроенный ключ тогда не нужен (настроенные служба
+штампов времени, формат и причина по-прежнему применяются). Готовые подписанты:
+
+```php
+use Dskripchenko\PhpPdfCryptoPro\CryptoProCadesSigner;   // dskripchenko/php-pdf-cryptopro
+use Dskripchenko\PhpPdfPkcs11\Pkcs11Signer;              // dskripchenko/php-pdf-pkcs11
+use Dskripchenko\PhpPdfCloudKms\Aws\AwsKmsSigner;        // dskripchenko/php-pdf-cloud-kms
+
+// CryptoPro CSP on the server — GOST R 34.10-2012.
+$signed = Pdf::sign(storage_path('contract.pdf'), ['signer' => CryptoProCadesSigner::fromThumbprint($thumbprint, pin: $pin)]);
+
+// An HSM, a smart card or a token through PKCS#11.
+$signed = Pdf::sign(storage_path('contract.pdf'), ['signer' => Pkcs11Signer::open($module, pin: $pin, keyLabel: 'pdf')]);
+
+// AWS KMS (Google Cloud KMS and Azure Key Vault likewise).
+return Pdf::fromHtml($html)
+    ->signed(['signer' => AwsKmsSigner::create('alias/pdf-signing', $certificatePem, region: 'eu-central-1')])
+    ->download('contract.pdf');
+```
+
+`Pdf::signDetached()` тоже принимает `'signer'`, но только подписант,
+возвращающий «сырую» подпись (PKCS#11, облачные KMS), — не КриптоПро, который
+возвращает CMS целиком. Ключа конфига для объекта-подписанта нет: передавайте
+его в каждом вызове или унаследуйте `PdfFactory` и переопределите его
+публичный `signatureConfig()`.
+
 Если эти адреса приходят от пользователей или из загруженных
 сертификатов, включите `signing.network.block_private_networks`: тогда
 каждый адрес, в который разрешается хост, обязан быть публичным (никаких
@@ -148,11 +184,12 @@ loopback, частных, link-local диапазонов и адресов ме
 
 ## Настройка
 
-`config/php-pdf.php` задаёт умолчания страницы и шрифты:
+`config/php-pdf.php` задаёт умолчания страницы, шрифты, метаданные по
+умолчанию, подпись и проверку (фрагмент):
 
 ```php
-'paper' => 'a4',              // a3..a6, letter, legal, tabloid, executive
-'orientation' => 'portrait',
+'paper' => env('PHP_PDF_PAPER', 'a4'),             // a3..a6, letter, legal, tabloid, executive
+'orientation' => env('PHP_PDF_ORIENTATION', 'portrait'),
 'margins' => ['top' => null, 'right' => null, 'bottom' => null, 'left' => null], // пункты
 
 'fonts' => [
@@ -178,16 +215,37 @@ loopback, частных, link-local диапазонов и адресов ме
     'pkcs12' => env('PHP_PDF_SIGN_P12'),
     'pkcs12_password' => env('PHP_PDF_SIGN_P12_PASSWORD'),
     'chain' => [],              // промежуточные сертификаты
-    'format' => 'pades',        // или 'pkcs7' (adbe.pkcs7.detached)
+    'format' => env('PHP_PDF_SIGN_FORMAT', 'pades'),  // или 'pkcs7' (adbe.pkcs7.detached)
     'reason' => null, 'location' => null, 'contact' => null, 'signer_name' => null,
-    'timestamp' => ['url' => env('PHP_PDF_TSA_URL'), 'username' => null, 'password' => null],
-    'network' => ['block_private_networks' => false, 'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024],
+    'timestamp' => [
+        'url' => env('PHP_PDF_TSA_URL'),
+        'username' => env('PHP_PDF_TSA_USERNAME'), 'password' => env('PHP_PDF_TSA_PASSWORD'),
+        'policy' => null, 'headers' => [], 'timeout' => 15,
+    ],
+    'network' => [
+        'block_private_networks' => env('PHP_PDF_SIGN_BLOCK_PRIVATE', false),
+        'allowed_cidrs' => [], 'max_response_bytes' => 20 * 1024 * 1024, 'max_redirects' => 3,
+    ],
 ],
 
 'validation' => [
     'trust' => [],              // корневые сертификаты для Pdf::validate()
     'system_trust' => false,    // добавить системные корни OpenSSL
     'fetch_revocation' => false,
+],
+```
+
+Нет подходящих шрифтов? [dskripchenko/php-pdf-fonts-liberation](https://github.com/dskripchenko/php-pdf-fonts-liberation)
+поставляет Liberation Sans, Serif и Mono (латиница, кириллица, греческий,
+иврит), метрически совместимые с Arial, Times New Roman и Courier New.
+Укажите пути к шрифтам в нём:
+
+```php
+'fonts' => [
+    'default' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Regular.ttf'),
+    'bold' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Bold.ttf'),
+    'italic' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-Italic.ttf'),
+    'bold_italic' => base_path('vendor/dskripchenko/php-pdf-fonts-liberation/assets/fonts/LiberationSans-BoldItalic.ttf'),
 ],
 ```
 
@@ -201,6 +259,7 @@ loopback, частных, link-local диапазонов и адресов ме
 
 - PHP 8.2+
 - Laravel 11, 12 или 13
+- `dskripchenko/php-pdf` 1.16+ (1.19+ для CSS из `<style>` в HTML)
 - Расширения: `mbstring`, `zlib`, `dom` (плюс `openssl` для шифрования и подписи)
 
 ## Тесты
@@ -208,6 +267,17 @@ loopback, частных, link-local диапазонов и адресов ме
 ```bash
 composer test
 ```
+
+## Семейство php-pdf
+
+| Пакет | Что добавляет |
+|---|---|
+| [php-pdf](https://github.com/dskripchenko/php-pdf) | Ядро: HTML с CSS или билдер → PDF, чтение, слияние, заполнение форм, подпись и проверка. |
+| **laravel-php-pdf** (этот пакет) | Мост для Laravel: Blade-шаблон сразу в PDF, `response()->pdf()`, подпись по конфигу. |
+| [php-pdf-fonts-liberation](https://github.com/dskripchenko/php-pdf-fonts-liberation) | Liberation Sans, Serif и Mono, метрически совместимые с Arial, Times New Roman и Courier New (OFL, вынесены из MIT-ядра). |
+| [php-pdf-cryptopro](https://github.com/dskripchenko/php-pdf-cryptopro) | Подпись ключом в КриптоПро CSP на сервере: ГОСТ Р 34.10-2012, российская КЭП. |
+| [php-pdf-pkcs11](https://github.com/dskripchenko/php-pdf-pkcs11) | Подпись ключом на HSM, смарт-карте или USB-токене через PKCS#11. |
+| [php-pdf-cloud-kms](https://github.com/dskripchenko/php-pdf-cloud-kms) | Подпись ключом в AWS KMS, Google Cloud KMS или Azure Key Vault. |
 
 ## Лицензия
 
