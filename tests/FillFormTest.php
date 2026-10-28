@@ -60,7 +60,8 @@ final class FillFormTest extends TestCase
 
         $bytes = Pdf::fillForm($this->template())->setValue('full_name', 'Иван Петров')->toBytes();
 
-        self::assertStringContainsString('/BaseFont /LiberationSerif', $bytes);
+        // A subset font is named with a tag (`ABCDEF+LiberationSerif`) since php-pdf 1.26.
+        self::assertMatchesRegularExpression('#/BaseFont /(?:[A-Z]{6}\+)?LiberationSerif(?![\w-])#', $bytes);
         self::assertSame('Иван Петров', ExistingFormFiller::fromBytes($bytes)->fields()['full_name']->value);
     }
 
