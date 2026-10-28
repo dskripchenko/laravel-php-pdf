@@ -4,6 +4,31 @@ All notable changes to `dskripchenko/laravel-php-pdf` are documented in
 this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-10-28
+
+Requires `dskripchenko/php-pdf` ^1.23.
+
+### Added
+- The `html` section of the config, and named arguments of
+  `Pdf::fromHtml()` that override it for one call: `local_files` /
+  `localFiles` (`PHP_PDF_HTML_LOCAL_FILES`) — false keeps HTML from
+  untrusted authors from reading the server's disk; `image_source` /
+  `imageSource` — a callable `(string $src): ?string` (a container binding
+  or class in the config, a closure per call) that serves images by their
+  `src`; `element_handlers` / `elementHandlers` — php-pdf's
+  `Html\ElementHandler`s; `tagged` / `tagged` and `lang` / `lang` — a tagged
+  PDF and its language; `base_font_size`. The defaults keep the behaviour
+  of 1.5.
+
+### Changed
+- `Pdf::builder()` starts on the page from the config (paper,
+  orientation, margins), as `Pdf::fromHtml()` does; it used php-pdf's
+  default page.
+
+### Fixed
+- A filled form's font may carry a subset tag (`ABCDEF+LiberationSerif`)
+  in the test suite, as php-pdf 1.26 names subsets.
+
 ## [1.5.0] — 2026-10-18
 
 ### Added

@@ -57,6 +57,36 @@ HTML может содержать блоки `<style>` — каскад, сел
 и отрисуйте результат: `Pdf::render(\Dskripchenko\PhpPdf\Document::fromHtml($html))`
 (настроенные шрифты применяются, метаданные по умолчанию — нет).
 
+### Параметры HTML
+
+Секция `html` в `config/php-pdf.php` задаёт, как `Pdf::fromHtml()` читает
+HTML; именованные аргументы переопределяют её для одного вызова
+(php-pdf 1.23+):
+
+```php
+// HTML от посторонних авторов: с диска сервера ничего не читается,
+// только data: URL и источник картинок.
+Pdf::fromHtml($userHtml, localFiles: false);
+
+// Картинки по их src — оттуда, где их хранит приложение.
+Pdf::fromHtml($html, imageSource: fn (string $src): ?string =>
+    str_starts_with($src, 'storage://') ? Storage::get(substr($src, 10)) : null);
+
+// Размеченный (доступный) PDF на русском.
+Pdf::fromHtml($html, tagged: true, lang: 'ru');
+```
+
+| Ключ | Аргумент | |
+|---|---|---|
+| `local_files` (`PHP_PDF_HTML_LOCAL_FILES`) | `localFiles` | `<img src>` и `<link href>` читаются с диска (по умолчанию true) |
+| `image_source` | `imageSource` | привязка в контейнере или класс вызываемого объекта `(string $src): ?string`; пробуется раньше `data:` URL и файлов на диске |
+| `element_handlers` | `elementHandlers` | обработчики `Html\ElementHandler` (привязки или классы) по порядку: чем станет элемент, прежде чем решит парсер |
+| `tagged`, `lang` | `tagged`, `lang` | размеченный PDF и его язык (BCP 47) |
+| `base_font_size` | — | размер в пунктах, к которому относятся `em` и `rem` (12) |
+
+`Pdf::builder()` начинает со страницы из настроек (формат, ориентация, поля),
+как и `Pdf::fromHtml()`.
+
 ### `response()->pdf()`
 
 Макрос принимает `PendingPdf`, `Document` из php-pdf (любого слоя),
@@ -277,7 +307,7 @@ loopback, частных, link-local диапазонов и адресов ме
 
 - PHP 8.2+
 - Laravel 11, 12 или 13
-- `dskripchenko/php-pdf` 1.18+ (1.19+ для CSS из `<style>` в HTML)
+- `dskripchenko/php-pdf` 1.23+
 - Расширения: `mbstring`, `zlib`, `dom` (плюс `openssl` для шифрования и подписи)
 
 ## Тесты
