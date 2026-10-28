@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # Weekly, so a new release of a dependency that breaks the package shows
+  # up here, not in an application.
+  schedule:
+    - cron: '0 6 * * 1'
 
 jobs:
   test:

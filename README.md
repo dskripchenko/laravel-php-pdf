@@ -56,6 +56,35 @@ The HTML may carry `<style>` blocks — the cascade, selectors, `@media print`
 render the result: `Pdf::render(\Dskripchenko\PhpPdf\Document::fromHtml($html))`
 (the configured fonts apply, the default metadata does not).
 
+### HTML options
+
+The `html` section of `config/php-pdf.php` sets how `Pdf::fromHtml()` reads
+HTML; named arguments override it for one call (php-pdf 1.23+):
+
+```php
+// HTML from untrusted authors: nothing is read from the server's disk,
+// only data: URLs and the image source.
+Pdf::fromHtml($userHtml, localFiles: false);
+
+// Images by their src from wherever the application keeps them.
+Pdf::fromHtml($html, imageSource: fn (string $src): ?string =>
+    str_starts_with($src, 'storage://') ? Storage::get(substr($src, 10)) : null);
+
+// A tagged (accessible) PDF in Russian.
+Pdf::fromHtml($html, tagged: true, lang: 'ru');
+```
+
+| Key | Argument | |
+|---|---|---|
+| `local_files` (`PHP_PDF_HTML_LOCAL_FILES`) | `localFiles` | `<img src>` and `<link href>` read from the disk (default true) |
+| `image_source` | `imageSource` | a container binding or class of a callable `(string $src): ?string`, tried before `data:` URLs and local files |
+| `element_handlers` | `elementHandlers` | `Html\ElementHandler`s (bindings or classes), tried in order: what an element becomes before the parser decides |
+| `tagged`, `lang` | `tagged`, `lang` | a tagged PDF and its language (BCP 47) |
+| `base_font_size` | — | the size in points that `em` and `rem` refer to (12) |
+
+`Pdf::builder()` starts on the page from the config (paper, orientation,
+margins), like `Pdf::fromHtml()`.
+
 ### `response()->pdf()`
 
 The macro accepts a `PendingPdf`, a php-pdf `Document` (either layer), a
@@ -276,7 +305,7 @@ call sites.
 
 - PHP 8.2+
 - Laravel 11, 12, or 13
-- `dskripchenko/php-pdf` 1.18+ (1.19+ for `<style>` CSS in HTML)
+- `dskripchenko/php-pdf` 1.23+
 - Extensions: `mbstring`, `zlib`, `dom` (plus `openssl` for encryption and signatures)
 
 ## Testing

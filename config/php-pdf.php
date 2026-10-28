@@ -65,6 +65,39 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | HTML
+    |--------------------------------------------------------------------------
+    |
+    | How Pdf::fromHtml() reads HTML; its named arguments override these per
+    | call.
+    |
+    | 'local_files'      <img src> and <link href> read from the server's
+    |                    disk. Set false for HTML from untrusted authors:
+    |                    only data: URLs and the image source are read then.
+    | 'image_source'     A container binding or class of a callable
+    |                    (string $src): ?string — an image's bytes by its
+    |                    src: Storage, a database, an allow-listed host. It
+    |                    is tried before data: URLs and local files.
+    | 'element_handlers' Container bindings or classes of
+    |                    \Dskripchenko\PhpPdf\Html\ElementHandler, tried in
+    |                    order: what an element becomes (a signature field
+    |                    for an <img>, a custom tag) before the parser decides.
+    | 'tagged', 'lang'   A tagged (accessible) PDF and its language (BCP 47).
+    | 'base_font_size'   The size, in points, that `em` and `rem` refer to.
+    |
+    */
+
+    'html' => [
+        'local_files' => env('PHP_PDF_HTML_LOCAL_FILES', true),
+        'image_source' => null,
+        'element_handlers' => [],
+        'tagged' => false,
+        'lang' => null,
+        'base_font_size' => 12.0,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Default document metadata
     |--------------------------------------------------------------------------
     |

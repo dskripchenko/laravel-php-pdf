@@ -6,6 +6,7 @@ namespace Dskripchenko\LaravelPhpPdf;
 
 use Dskripchenko\PhpPdf\Build\DocumentBuilder;
 use Dskripchenko\PhpPdf\Document;
+use Dskripchenko\PhpPdf\Html\ElementHandler;
 use Dskripchenko\PhpPdf\Layout\Engine;
 use Dskripchenko\PhpPdf\Pdf\Forms\ExistingFormFiller;
 use Dskripchenko\PhpPdf\Pdf\PdfFont;
@@ -65,16 +66,42 @@ class PdfFactory
     ) {}
 
     /**
-     * Parse HTML into a renderable document.
+     * Parse HTML into a renderable document. The `html` section of the
+     * config sets how; a named argument overrides it for this call:
+     *
+     * - `$localFiles`: read `<img src>` and `<link href>` from the server's
+     *   disk; false for HTML from untrusted authors (only `data:` URLs and
+     *   the image source are read);
+     * - `$imageSource`: `(string $src): ?string` — an image's bytes by its
+     *   `src` (storage, a database, an allow-listed host), tried first;
+     * - `$elementHandlers`: {@see ElementHandler}s that decide what an HTML
+     *   element becomes before the parser does;
+     * - `$tagged`, `$lang`: a tagged (accessible) PDF and its language.
      *
      * @param  array<string, string>  $metadata
+     * @param  list<ElementHandler>|null  $elementHandlers
      */
-    public function fromHtml(string $html, array $metadata = []): PendingPdf
-    {
+    public function fromHtml(
+        string $html,
+        array $metadata = [],
+        ?bool $localFiles = null,
+        ?\Closure $imageSource = null,
+        ?array $elementHandlers = null,
+        ?bool $tagged = null,
+        ?string $lang = null,
+    ): PendingPdf {
+        $options = (array) ($this->config['html'] ?? []);
+        $configuredLang = $options['lang'] ?? null;
         $document = Document::fromHtml(
             $html,
             metadata: $metadata + $this->defaultMetadata(),
             sectionTemplate: new Section(pageSetup: $this->pageSetup()),
+            tagged: $tagged ?? (bool) ($options['tagged'] ?? false),
+            lang: $lang ?? (is_string($configuredLang) && $configuredLang !== '' ? $configuredLang : null),
+            baseFontSizePt: (float) ($options['base_font_size'] ?? 12.0),
+            elementHandlers: $elementHandlers ?? $this->configuredElementHandlers($options['element_handlers'] ?? []),
+            imageSource: $imageSource ?? $this->configuredImageSource($options['image_source'] ?? null),
+            localFiles: $localFiles ?? (bool) ($options['local_files'] ?? true),
         );
 
         return new PendingPdf($document, $this->engine(), $this);
@@ -82,12 +109,12 @@ class PdfFactory
 
     /**
      * Fluent builder for programmatic documents (headings, tables, charts,
-     * barcodes...). Wrap the result with {@see render()} to apply the
-     * configured fonts.
+     * barcodes...), on the page from the config. Wrap the result with
+     * {@see render()} to apply the configured fonts.
      */
     public function builder(): DocumentBuilder
     {
-        return DocumentBuilder::new();
+        return DocumentBuilder::new()->pageSetup($this->pageSetup());
     }
 
     /**
@@ -361,6 +388,50 @@ class PdfFactory
         }
 
         throw new \LogicException(sprintf("php-pdf.%s '%s' resolved to %s, not a %s", $key, $id, get_debug_type($object), implode(' or ', $types)));
+    }
+
+    /**
+     * `html.image_source`: a closure, or a container binding / class of a
+     * callable `(string $src): ?string`.
+     */
+    private function configuredImageSource(mixed $binding): ?\Closure
+    {
+        if ($binding === null || $binding === '') {
+            return null;
+        }
+        if ($binding instanceof \Closure) {
+            return $binding;
+        }
+        if (! is_string($binding)) {
+            throw new \LogicException('php-pdf.html.image_source must be a closure, a container binding or a class name');
+        }
+        $source = $this->container !== null
+            ? $this->container->make($binding)
+            : (class_exists($binding) ? new $binding : throw new \LogicException("php-pdf.html.image_source '$binding' needs the Laravel container to resolve"));
+        if (! is_callable($source)) {
+            throw new \LogicException(sprintf("php-pdf.html.image_source '%s' resolved to %s, not a callable", $binding, get_debug_type($source)));
+        }
+
+        return \Closure::fromCallable($source);
+    }
+
+    /**
+     * `html.element_handlers`: handlers, or container bindings / classes
+     * of them, in order.
+     *
+     * @return list<ElementHandler>
+     */
+    private function configuredElementHandlers(mixed $bindings): array
+    {
+        $handlers = [];
+        foreach ((array) $bindings as $binding) {
+            $handlers[] = $binding instanceof ElementHandler
+                ? $binding
+                : $this->resolveBinding((string) $binding, 'html.element_handlers', [ElementHandler::class]);
+        }
+
+        /** @var list<ElementHandler> $handlers */
+        return $handlers;
     }
 
     /** Whether the installed php-pdf signs detached with a CmsSigner (1.20+). */

@@ -57,6 +57,36 @@ nicht angewendet. Soll `@page` entscheiden, das HTML mit php-pdf parsen und
 das Ergebnis rendern: `Pdf::render(\Dskripchenko\PhpPdf\Document::fromHtml($html))`
 (die konfigurierten Schriften gelten, die Standard-Metadaten nicht).
 
+### HTML-Optionen
+
+Der Abschnitt `html` in `config/php-pdf.php` legt fest, wie `Pdf::fromHtml()`
+HTML liest; benannte Argumente überschreiben ihn für einen Aufruf
+(php-pdf 1.23+):
+
+```php
+// HTML von fremden Autoren: nichts wird von der Festplatte des Servers
+// gelesen, nur data:-URLs und die Bildquelle.
+Pdf::fromHtml($userHtml, localFiles: false);
+
+// Bilder anhand ihres src von dort, wo die Anwendung sie ablegt.
+Pdf::fromHtml($html, imageSource: fn (string $src): ?string =>
+    str_starts_with($src, 'storage://') ? Storage::get(substr($src, 10)) : null);
+
+// Ein getaggtes (barrierefreies) PDF auf Deutsch.
+Pdf::fromHtml($html, tagged: true, lang: 'de');
+```
+
+| Schlüssel | Argument | |
+|---|---|---|
+| `local_files` (`PHP_PDF_HTML_LOCAL_FILES`) | `localFiles` | `<img src>` und `<link href>` werden von der Festplatte gelesen (Standard true) |
+| `image_source` | `imageSource` | eine Container-Bindung oder Klasse eines Callables `(string $src): ?string`, vor `data:`-URLs und lokalen Dateien versucht |
+| `element_handlers` | `elementHandlers` | `Html\ElementHandler` (Bindungen oder Klassen) der Reihe nach: was aus einem Element wird, bevor der Parser entscheidet |
+| `tagged`, `lang` | `tagged`, `lang` | ein getaggtes PDF und seine Sprache (BCP 47) |
+| `base_font_size` | — | die Größe in Punkt, auf die sich `em` und `rem` beziehen (12) |
+
+`Pdf::builder()` beginnt mit der Seite aus der Konfiguration (Format,
+Ausrichtung, Ränder), wie `Pdf::fromHtml()`.
+
 ### `response()->pdf()`
 
 Das Makro nimmt ein `PendingPdf`, ein php-pdf-`Document` (beide Ebenen), ein
@@ -283,7 +313,7 @@ und [FPDI](https://github.com/dskripchenko/php-pdf/blob/main/docs/en/MIGRATION-F
 
 - PHP 8.2+
 - Laravel 11, 12 oder 13
-- `dskripchenko/php-pdf` 1.18+ (1.19+ für `<style>`-CSS im HTML)
+- `dskripchenko/php-pdf` 1.23+
 - Erweiterungen: `mbstring`, `zlib`, `dom` (plus `openssl` für Verschlüsselung und Signaturen)
 
 ## Tests

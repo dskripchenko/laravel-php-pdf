@@ -54,6 +54,33 @@ HTML 中的 `@page` 规则。若要由 `@page` 决定，请用 php-pdf 解析 HT
 `Pdf::render(\Dskripchenko\PhpPdf\Document::fromHtml($html))`
 （配置的字体会生效，默认元数据不会）。
 
+### HTML 选项
+
+`config/php-pdf.php` 中的 `html` 部分决定 `Pdf::fromHtml()` 如何读取 HTML；命名参数可为单次调用覆盖这些设置（php-pdf 1.23+）：
+
+```php
+// 来自不受信任作者的 HTML：不从服务器磁盘读取任何内容，
+// 只读取 data: URL 和图片来源。
+Pdf::fromHtml($userHtml, localFiles: false);
+
+// 按 src 从应用存放图片的地方获取图片。
+Pdf::fromHtml($html, imageSource: fn (string $src): ?string =>
+    str_starts_with($src, 'storage://') ? Storage::get(substr($src, 10)) : null);
+
+// 带标签（无障碍）的中文 PDF。
+Pdf::fromHtml($html, tagged: true, lang: 'zh');
+```
+
+| 键 | 参数 | |
+|---|---|---|
+| `local_files`（`PHP_PDF_HTML_LOCAL_FILES`） | `localFiles` | 从磁盘读取 `<img src>` 和 `<link href>`（默认 true） |
+| `image_source` | `imageSource` | 可调用对象 `(string $src): ?string` 的容器绑定或类，先于 `data:` URL 和本地文件尝试 |
+| `element_handlers` | `elementHandlers` | 按顺序尝试的 `Html\ElementHandler`（绑定或类）：在解析器决定之前确定元素变成什么 |
+| `tagged`、`lang` | `tagged`、`lang` | 带标签的 PDF 及其语言（BCP 47） |
+| `base_font_size` | — | `em` 和 `rem` 所参照的字号（磅，默认 12） |
+
+`Pdf::builder()` 与 `Pdf::fromHtml()` 一样，从配置中的页面（纸张、方向、页边距）开始。
+
 ### `response()->pdf()`
 
 这个宏接受 `PendingPdf`、php-pdf 的 `Document`（任一层）、已填写的表单（`Pdf::fillForm()`）或原始字节——
@@ -262,7 +289,7 @@ $signed = Pdf::sign(storage_path('contract.pdf'));
 
 - PHP 8.2+
 - Laravel 11、12 或 13
-- `dskripchenko/php-pdf` 1.18+（HTML 中使用 `<style>` CSS 需 1.19+）
+- `dskripchenko/php-pdf` 1.23+
 - 扩展：`mbstring`、`zlib`、`dom`（加密与签名还需 `openssl`）
 
 ## 测试
